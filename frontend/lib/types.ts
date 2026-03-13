@@ -204,8 +204,7 @@ export interface StabilityResult {
 export interface PipelineResult {
   run_id?: string;
   created_at?: string;
-  dataset_id?: string;
-  dataset_b_id?: string | null;
+  dataset_ids?: string[];
   seed?: number;
   iterations: IterationResult[];
   stability: StabilityResult | null;
@@ -214,8 +213,7 @@ export interface PipelineResult {
 export interface PipelineHistoryItem {
   run_id: string;
   created_at: string;
-  dataset_id: string;
-  dataset_b_id?: string | null;
+  dataset_ids: string[];
   seed: number;
   iterations: number;
 }

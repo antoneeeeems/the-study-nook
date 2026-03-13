@@ -11,6 +11,8 @@ DATASETS = {
     'B': os.path.join(DATA_DIR, 'dataset_B.csv'),
 }
 
+BUILTIN_DATASET_ORDER = ['A', 'B']
+
 # Cache loaded transactions
 _cache = {}
 
@@ -58,16 +60,72 @@ def normalize_item_name(item: str) -> str:
 
 def list_datasets():
     result = []
+    seen_ids = set()
+
+    for ds_id in BUILTIN_DATASET_ORDER:
+        path = DATASETS.get(ds_id)
+        if path and os.path.exists(path):
+            result.append({'id': ds_id, 'name': f'Dataset {ds_id}', 'path': path})
+            seen_ids.add(ds_id)
+
+    # Include uploaded datasets in deterministic order.
+    for ds_id in get_uploaded_dataset_ids_ordered():
+        if ds_id in seen_ids:
+            continue
+        upload_path = os.path.join(UPLOAD_DIR, f'{ds_id}.csv')
+        if os.path.exists(upload_path):
+            result.append({'id': ds_id, 'name': f'Uploaded: {ds_id}', 'path': upload_path})
+            seen_ids.add(ds_id)
+
+    # Include any other registered datasets not in built-ins/uploads.
     for ds_id, path in DATASETS.items():
+        if ds_id in seen_ids:
+            continue
         if os.path.exists(path):
             result.append({'id': ds_id, 'name': f'Dataset {ds_id}', 'path': path})
-    # Include uploaded datasets
-    if os.path.exists(UPLOAD_DIR):
-        for f in os.listdir(UPLOAD_DIR):
-            if f.endswith('.csv'):
-                ds_id = f.replace('.csv', '')
-                result.append({'id': ds_id, 'name': f'Uploaded: {ds_id}', 'path': os.path.join(UPLOAD_DIR, f)})
     return result
+
+
+def get_uploaded_dataset_ids_ordered():
+    if not os.path.exists(UPLOAD_DIR):
+        return []
+
+    candidates = []
+    for filename in os.listdir(UPLOAD_DIR):
+        if not filename.endswith('.csv'):
+            continue
+        full_path = os.path.join(UPLOAD_DIR, filename)
+        dataset_id = filename[:-4]
+        candidates.append((os.path.getmtime(full_path), filename.lower(), dataset_id))
+
+    candidates.sort(key=lambda row: (row[0], row[1]))
+    return [dataset_id for _, _, dataset_id in candidates]
+
+
+def get_pipeline_dataset_ids_ordered():
+    ordered_ids = []
+    seen_ids = set()
+
+    for ds_id in BUILTIN_DATASET_ORDER:
+        path = DATASETS.get(ds_id)
+        if path and os.path.exists(path) and ds_id not in seen_ids:
+            ordered_ids.append(ds_id)
+            seen_ids.add(ds_id)
+
+    for ds_id in get_uploaded_dataset_ids_ordered():
+        if ds_id not in seen_ids and get_dataset_path(ds_id):
+            ordered_ids.append(ds_id)
+            seen_ids.add(ds_id)
+
+    # Keep backward compatibility for any additional registered datasets.
+    for ds_id, path in DATASETS.items():
+        if ds_id in seen_ids:
+            continue
+        if os.path.exists(path):
+            ordered_ids.append(ds_id)
+            seen_ids.add(ds_id)
+
+    return ordered_ids
 
 
 def get_dataset_path(dataset_id):

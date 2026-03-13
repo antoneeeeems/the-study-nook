@@ -9,7 +9,7 @@ client = TestClient(app)
 def test_pipeline_run_returns_metadata_fields():
     response = client.post(
         "/api/pipeline/run",
-        json={"dataset_id": "A", "dataset_b_id": "B", "seed": 99},
+        json={"seed": 99},
     )
     assert response.status_code == 200
     data = response.json()
@@ -17,6 +17,8 @@ def test_pipeline_run_returns_metadata_fields():
     assert "run_id" in data
     assert "created_at" in data
     assert data["seed"] == 99
+    assert isinstance(data.get("dataset_ids", []), list)
+    assert "A" in data.get("dataset_ids", [])
     assert isinstance(data.get("iterations", []), list)
 
 

@@ -109,7 +109,7 @@ export default function PipelinePage() {
     try {
       const result = await api.pipeline.run();
       setPipeline(result);
-      addToast("Pipeline completed — 3 iterations processed!", "success");
+      addToast("Pipeline completed — chronological datasets processed into iterations.", "success");
     } catch {
       addToast("Pipeline failed to run", "error");
     } finally {
@@ -120,6 +120,7 @@ export default function PipelinePage() {
   if (loading) return <LoadingSpinner text="Loading pipeline..." />;
 
   const iterations = pipeline?.iterations || [];
+  const sourceDatasetIds = pipeline?.dataset_ids || [];
   const selected = iterations[activeIter];
 
   const thresholdData = iterations.map((it) => ({
@@ -138,7 +139,10 @@ export default function PipelinePage() {
       <div className="flex items-start justify-between">
         <div>
           <h2 className="text-xl font-bold text-[color:var(--color-text)]">Self-Learning Pipeline</h2>
-          <p className="text-sm text-[color:var(--color-text-muted)]">3-iteration FP-Growth pipeline with drift detection and adaptive thresholds</p>
+          <p className="text-sm text-[color:var(--color-text-muted)]">Chronological FP-Growth pipeline that auto-builds iterations from Dataset A, Dataset B, and uploaded CSVs</p>
+          <p className="text-xs text-[color:var(--color-text-muted)] mt-1">
+            Source datasets: {sourceDatasetIds.length ? sourceDatasetIds.join(", ") : "Run pipeline to resolve current dataset order"}
+          </p>
         </div>
         <Button
           onClick={handleRun}
@@ -432,7 +436,7 @@ export default function PipelinePage() {
         <EmptyState
           icon={<Workflow size={48} />}
           title="No Pipeline Results"
-          description='Click "Run Pipeline" to start the 3-iteration self-learning loop with drift detection.'
+          description='Click "Run Pipeline" to start the chronological self-learning loop with automatic dataset inclusion and drift detection.'
           action={
             <Button
               onClick={handleRun}

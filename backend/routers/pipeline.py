@@ -1,9 +1,9 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional, Annotated
+from typing import Annotated
 from fastapi import Query
 
-from ..services.dataset import load_transactions
+from ..services.dataset import get_pipeline_dataset_ids_ordered, load_transactions
 from ..core.pipeline import run_full_pipeline, compare_fpgrowth_vs_apriori
 from ..core.threshold import adaptive_threshold
 from ..core.versioning import save_pipeline_run, load_latest_run, list_runs
@@ -20,8 +20,6 @@ _pipeline_cache = {}
 
 
 class PipelineRunRequest(BaseModel):
-    dataset_id: str = "A"
-    dataset_b_id: Optional[str] = "B"
     seed: int = 42
 
 
@@ -31,16 +29,18 @@ class PipelineRunRequest(BaseModel):
     responses={404: {"description": "Dataset not found"}},
 )
 def run_pipeline(body: PipelineRunRequest):
-    transactions_a = load_transactions(body.dataset_id)
-    if not transactions_a:
-        raise HTTPException(status_code=404, detail=f"Dataset '{body.dataset_id}' not found")
+    dataset_ids = get_pipeline_dataset_ids_ordered()
+    dataset_sequences = []
+    for dataset_id in dataset_ids:
+        transactions = load_transactions(dataset_id)
+        if transactions:
+            dataset_sequences.append({'id': dataset_id, 'transactions': transactions})
 
-    transactions_b = None
-    if body.dataset_b_id:
-        transactions_b = load_transactions(body.dataset_b_id)
+    if not dataset_sequences:
+        raise HTTPException(status_code=404, detail="No datasets found for pipeline run")
 
-    result = run_full_pipeline(transactions_a, transactions_b, seed=body.seed)
-    record = save_pipeline_run(result, body.dataset_id, body.dataset_b_id, body.seed)
+    result = run_full_pipeline(dataset_sequences, seed=body.seed)
+    record = save_pipeline_run(result, result.get('dataset_ids', []), body.seed)
     _pipeline_cache['latest'] = record
     return record
 
@@ -57,11 +57,16 @@ def get_iterations():
             _pipeline_cache['latest'] = latest
             return latest
 
-        transactions_a = load_transactions('A')
-        transactions_b = load_transactions('B')
-        if transactions_a:
-            result = run_full_pipeline(transactions_a, transactions_b, seed=42)
-            record = save_pipeline_run(result, 'A', 'B', 42)
+        dataset_ids = get_pipeline_dataset_ids_ordered()
+        dataset_sequences = []
+        for dataset_id in dataset_ids:
+            transactions = load_transactions(dataset_id)
+            if transactions:
+                dataset_sequences.append({'id': dataset_id, 'transactions': transactions})
+
+        if dataset_sequences:
+            result = run_full_pipeline(dataset_sequences, seed=42)
+            record = save_pipeline_run(result, result.get('dataset_ids', []), 42)
             _pipeline_cache['latest'] = record
             return record
 

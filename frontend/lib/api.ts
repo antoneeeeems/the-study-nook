@@ -89,10 +89,10 @@ export const api = {
   },
 
   pipeline: {
-    run: (datasetId = "A", datasetBId = "B", seed = 42) =>
+    run: (seed = 42) =>
       fetchApi<PipelineResult>("/api/pipeline/run", {
         method: "POST",
-        body: JSON.stringify({ dataset_id: datasetId, dataset_b_id: datasetBId, seed }),
+        body: JSON.stringify({ seed }),
       }),
     iterations: () => fetchApi<PipelineResult>("/api/pipeline/iterations"),
     history: (limit = 20) => fetchApi<PipelineHistoryResponse>(`/api/pipeline/history?limit=${limit}`),

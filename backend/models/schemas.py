@@ -193,8 +193,7 @@ class StabilityOut(BaseModel):
 class PipelineRunResponse(BaseModel):
     run_id: str
     created_at: str
-    dataset_id: str
-    dataset_b_id: Optional[str] = None
+    dataset_ids: list[str] = Field(default_factory=list)
     seed: int
     iterations: list[IterationOut]
     stability: Optional[StabilityOut] = None
@@ -203,8 +202,7 @@ class PipelineRunResponse(BaseModel):
 class PipelineRunListItem(BaseModel):
     run_id: str
     created_at: str
-    dataset_id: str
-    dataset_b_id: Optional[str] = None
+    dataset_ids: list[str] = Field(default_factory=list)
     seed: int
     iterations: int
 

@@ -12,7 +12,7 @@ def _run_file_path(run_id: str) -> str:
     return os.path.join(PIPELINE_RUN_DIR, f"{run_id}.json")
 
 
-def save_pipeline_run(result: dict, dataset_id: str, dataset_b_id: str | None, seed: int) -> dict:
+def save_pipeline_run(result: dict, dataset_ids: list[str], seed: int) -> dict:
     now_utc = datetime.now(timezone.utc)
     run_id = f"run_{now_utc.strftime('%Y%m%d_%H%M%S')}_{uuid4().hex[:8]}"
     created_at = now_utc.isoformat()
@@ -20,8 +20,7 @@ def save_pipeline_run(result: dict, dataset_id: str, dataset_b_id: str | None, s
     payload = {
         "run_id": run_id,
         "created_at": created_at,
-        "dataset_id": dataset_id,
-        "dataset_b_id": dataset_b_id,
+        "dataset_ids": dataset_ids,
         "seed": seed,
         "iterations": result.get("iterations", []),
         "stability": result.get("stability"),
@@ -64,8 +63,7 @@ def list_runs(limit: int = 20) -> list[dict]:
             {
                 "run_id": run.get("run_id"),
                 "created_at": run.get("created_at"),
-                "dataset_id": run.get("dataset_id"),
-                "dataset_b_id": run.get("dataset_b_id"),
+                "dataset_ids": run.get("dataset_ids", []),
                 "seed": int(run.get("seed", 42)),
                 "iterations": len(run.get("iterations", [])),
             }

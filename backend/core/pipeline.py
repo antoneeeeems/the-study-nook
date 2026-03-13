@@ -137,64 +137,89 @@ def _compute_stability(rules_v1, rules_v2, rules_v3):
     }
 
 
-def run_full_pipeline(transactions_a, transactions_b=None, seed=42):
-    """Run the full 3-iteration self-learning pipeline."""
-    np.random.seed(seed)
-    rng_np = np.random.default_rng(seed)
-    rng = random.Random(seed)
+def _bootstrap_drift_report(transactions, rng):
+    split_idx = int(len(transactions) * 0.70)
+    txns_early = transactions[:split_idx]
+    txns_late = transactions[split_idx:]
 
-    # Iteration 1: Dataset A
-    rules_v1, _, _, result_v1 = run_iteration(
-        iteration_num=1,
-        label='Dataset A (initial)',
-        transactions=transactions_a,
-        prev_rules=None,
-        prev_drift_report=None,
-        rng=rng,
-    )
+    if not txns_early or not txns_late:
+        return None
 
-    # Bootstrap drift for iter 2
-    split_idx = int(len(transactions_a) * 0.70)
-    txns_early = transactions_a[:split_idx]
-    txns_late = transactions_a[split_idx:]
     ms_e, mc_e, _ = adaptive_threshold(txns_early, rng=rng)
     ms_l, mc_l, _ = adaptive_threshold(txns_late, rng=rng)
     fi_early = run_fpgrowth(txns_early, ms_e)
     fi_late = run_fpgrowth(txns_late, ms_l)
     rules_early = score_rules(derive_association_rules(fi_early, len(txns_early), mc_e))
     rules_late = score_rules(derive_association_rules(fi_late, len(txns_late), mc_l))
-    drift_v1 = detect_drift(rules_early, rules_late, threshold=0.5)
+    return detect_drift(rules_early, rules_late, threshold=0.5)
 
-    # Iteration 2: Dataset A+B (or just A with drift if no B)
-    if transactions_b:
-        transactions_ab = transactions_a + transactions_b
-        label_v2 = 'Dataset A+B (updated)'
-    else:
-        transactions_ab = transactions_a
-        label_v2 = 'Dataset A (re-mined)'
 
-    rules_v2, _, drift_v2, result_v2 = run_iteration(
-        iteration_num=2,
-        label=label_v2,
-        transactions=transactions_ab,
-        prev_rules=rules_v1,
-        prev_drift_report=drift_v1,
+def run_full_pipeline(dataset_sequences, seed=42):
+    """Run a self-learning pipeline using chronological datasets plus a final drift simulation."""
+    if not dataset_sequences:
+        return {'iterations': [], 'stability': None, 'dataset_ids': []}
+
+    np.random.seed(seed)
+    rng_np = np.random.default_rng(seed)
+    rng = random.Random(seed)
+
+    iteration_results = []
+    all_rules = []
+
+    first_dataset = dataset_sequences[0]
+    cumulative_transactions = list(first_dataset['transactions'])
+
+    # Iteration 1: initial baseline dataset.
+    rules_v1, _, _, result_v1 = run_iteration(
+        iteration_num=1,
+        label=f"Dataset {first_dataset['id']} (initial)",
+        transactions=cumulative_transactions,
+        prev_rules=None,
+        prev_drift_report=None,
         rng=rng,
     )
+    iteration_results.append({**result_v1, 'rules': []})
+    all_rules.append(rules_v1)
 
-    # Iteration 3: Drift-simulated
-    drifted = simulate_drift(transactions_ab, rng_np)
-    transactions_v3 = transactions_ab + drifted[:800]
+    prev_rules = rules_v1
+    prev_drift_report = _bootstrap_drift_report(cumulative_transactions, rng)
 
-    rules_v3, _, _, result_v3 = run_iteration(
-        iteration_num=3,
-        label='Dataset v3 (drift-simulated)',
-        transactions=transactions_v3,
-        prev_rules=rules_v2,
-        prev_drift_report=drift_v2,
+    # Iterations 2..N: progressively merge each next dataset.
+    for idx, dataset in enumerate(dataset_sequences[1:], start=2):
+        cumulative_transactions = cumulative_transactions + list(dataset['transactions'])
+
+        rules_curr, _, drift_curr, result_curr = run_iteration(
+            iteration_num=idx,
+            label=f"Merged through Dataset {dataset['id']}",
+            transactions=cumulative_transactions,
+            prev_rules=prev_rules,
+            prev_drift_report=prev_drift_report,
+            rng=rng,
+        )
+        iteration_results.append({**result_curr, 'rules': []})
+        all_rules.append(rules_curr)
+        prev_rules = rules_curr
+        prev_drift_report = drift_curr
+
+    # Final iteration: drift-simulated data after all cumulative datasets.
+    drifted = simulate_drift(cumulative_transactions, rng_np)
+    transactions_final = cumulative_transactions + drifted[:800]
+    drift_iteration_num = len(dataset_sequences) + 1
+    rules_last = all_rules[-1] if all_rules else None
+
+    rules_v_drift, _, _, result_v_drift = run_iteration(
+        iteration_num=drift_iteration_num,
+        label=f'Dataset v{drift_iteration_num} (drift-simulated)',
+        transactions=transactions_final,
+        prev_rules=rules_last,
+        prev_drift_report=prev_drift_report,
         rng=rng,
     )
+    iteration_results.append({**result_v_drift, 'rules': []})
+    all_rules.append(rules_v_drift)
 
+    rules_v2 = all_rules[1] if len(all_rules) > 1 else None
+    rules_v3 = all_rules[2] if len(all_rules) > 2 else None
     stability = _compute_stability(rules_v1, rules_v2, rules_v3)
 
     # Convert rules to serializable format
@@ -203,11 +228,11 @@ def run_full_pipeline(transactions_a, transactions_b=None, seed=42):
             return []
         return rules_df.to_dict(orient='records')
 
+    for idx, rules_df in enumerate(all_rules):
+        iteration_results[idx]['rules'] = rules_to_list(rules_df)
+
     return {
-        'iterations': [
-            {**result_v1, 'rules': rules_to_list(rules_v1)},
-            {**result_v2, 'rules': rules_to_list(rules_v2)},
-            {**result_v3, 'rules': rules_to_list(rules_v3)},
-        ],
+        'iterations': iteration_results,
         'stability': stability,
+        'dataset_ids': [dataset['id'] for dataset in dataset_sequences],
     }

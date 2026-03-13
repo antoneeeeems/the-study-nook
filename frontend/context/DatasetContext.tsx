@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, ReactNode } from "react";
+import { createContext, useCallback, useContext, ReactNode } from "react";
 
 interface DatasetContextType {
   activeDataset: string;
@@ -13,9 +13,12 @@ const DatasetContext = createContext<DatasetContextType>({
 });
 
 export function DatasetProvider({ children }: { children: ReactNode }) {
-  const [activeDataset, setActiveDataset] = useState("A");
+  const setActiveDataset = useCallback((_id: string) => {
+    // Dataset selection is intentionally fixed to A for non-pipeline pages.
+  }, []);
+
   return (
-    <DatasetContext.Provider value={{ activeDataset, setActiveDataset }}>
+    <DatasetContext.Provider value={{ activeDataset: "A", setActiveDataset }}>
       {children}
     </DatasetContext.Provider>
   );

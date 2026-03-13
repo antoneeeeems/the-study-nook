@@ -1,7 +1,6 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useDataset } from "@/context/DatasetContext";
 import { useCart } from "@/context/CartContext";
 import { useTheme } from "@/context/ThemeContext";
 import { ShoppingCart, ChevronRight, Moon, Sun } from "lucide-react";
@@ -20,7 +19,6 @@ const PAGE_NAMES: Record<string, string> = {
 };
 
 export default function Header() {
-  const { activeDataset, setActiveDataset } = useDataset();
   const { totalQuantity, openMiniCart } = useCart();
   const { theme, toggleTheme } = useTheme();
   const pathname = usePathname();
@@ -61,33 +59,6 @@ export default function Header() {
           )}
         </button>
 
-        {/* Dataset toggle — segmented control */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-[color:var(--color-text-muted)] font-medium">Dataset</span>
-          <div className="relative flex rounded-lg p-0.5 soft-pressed">
-            <div
-              className="absolute top-0.5 h-[calc(100%-4px)] w-[calc(50%-2px)] bg-[color:var(--color-text)] rounded-md transition-all duration-300 ease-out shadow-sm"
-              style={{ left: activeDataset === "A" ? "2px" : "calc(50% + 0px)" }}
-              aria-hidden="true"
-            />
-            {[
-              { id: "A", label: "Elementary" },
-              { id: "B", label: "HS/College" },
-            ].map(({ id, label }) => (
-              <button
-                key={id}
-                onClick={() => setActiveDataset(id)}
-                aria-label={`Switch to ${label} dataset`}
-                aria-pressed={activeDataset === id}
-                className={`relative z-10 px-3.5 py-1.5 text-xs font-semibold rounded-md transition-colors duration-200 ${
-                  activeDataset === id ? "text-white" : "text-[color:var(--color-text-muted)] hover:text-[color:var(--color-text)]"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
       </div>
     </header>
   );
