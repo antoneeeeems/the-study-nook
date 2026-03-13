@@ -11,7 +11,7 @@ import Button from "@/components/shared/Button";
 import { CHART_GRID, CHART_TICK, CHART_TOOLTIP, CHART_LEGEND, CHART_COLORS } from "@/lib/chart-config";
 import {
   FileText, RefreshCw, BarChart3, TreePine, GitBranch, Zap, Search,
-  Database, Target, Play, ArrowRight, CheckCircle2, XCircle,
+  Database, Target, Play, ArrowRight, CheckCircle2, XCircle, Trash2,
   TrendingUp, TrendingDown, Activity, Workflow, Shield, AlertTriangle,
 } from "lucide-react";
 import type { PipelineResult, AlgoComparison, DatasetInfo } from "@/lib/types";
@@ -96,6 +96,8 @@ export default function PipelinePage() {
   const [running, setRunning] = useState(false);
   const [availableSources, setAvailableSources] = useState<string[]>([]);
   const [selectedSources, setSelectedSources] = useState<string[]>([]);
+  const [removedIterations, setRemovedIterations] = useState<number[]>([]);
+  const [deletingDatasetId, setDeletingDatasetId] = useState<string | null>(null);
   const { addToast } = useToast();
   const { refreshPipelineSource } = useRecommendationSource();
 
@@ -108,6 +110,7 @@ export default function PipelinePage() {
       .then(([p, c, datasets]) => {
         setPipeline(p);
         setComparison(c);
+        setRemovedIterations([]);
 
         const discovered = datasets.map((dataset) => dataset.id);
         const fromPipeline = p?.dataset_ids ?? [];
@@ -143,6 +146,8 @@ export default function PipelinePage() {
       const result = await api.pipeline.run({ include_dataset_ids: selectedSources });
       setPipeline(result);
       setSelectedSources(result.dataset_ids ?? selectedSources);
+      setRemovedIterations([]);
+      setActiveIter(0);
       await refreshPipelineSource();
       addToast("Pipeline completed — chronological datasets processed into iterations.", "success");
     } catch {
@@ -152,13 +157,71 @@ export default function PipelinePage() {
     }
   };
 
+  const handleRemoveIteration = (iterationNo: number) => {
+    setRemovedIterations((prev) => {
+      if (prev.includes(iterationNo)) {
+        return prev;
+      }
+
+      const totalIterations = pipeline?.iterations?.length ?? 0;
+      const visibleCount = totalIterations - prev.length;
+      if (visibleCount <= 1) {
+        addToast("At least one iteration must remain visible.", "error");
+        return prev;
+      }
+
+      return [...prev, iterationNo];
+    });
+  };
+
+  const handleRestoreIterations = () => {
+    setRemovedIterations([]);
+    setActiveIter(0);
+  };
+
+  const handleRemoveDataset = async (datasetId: string) => {
+    const isBuiltin = datasetId === "A" || datasetId === "B";
+    if (isBuiltin) {
+      addToast("Built-in datasets cannot be deleted.", "error");
+      return;
+    }
+
+    const confirmed = window.confirm(`Delete dataset ${datasetId}? This cannot be undone.`);
+    if (!confirmed) return;
+
+    setDeletingDatasetId(datasetId);
+    try {
+      await api.datasets.remove(datasetId);
+      let nextAvailable: string[] = [];
+      setAvailableSources((prev) => {
+        nextAvailable = prev.filter((id) => id !== datasetId);
+        return nextAvailable;
+      });
+      setSelectedSources((prev) => {
+        const next = prev.filter((id) => id !== datasetId && nextAvailable.includes(id));
+        if (next.length === 0) {
+          const fallback = nextAvailable[0] ?? "A";
+          return [fallback];
+        }
+        return next;
+      });
+      addToast(`Dataset ${datasetId} deleted.`, "success");
+    } catch {
+      addToast(`Failed to delete dataset ${datasetId}.`, "error");
+    } finally {
+      setDeletingDatasetId(null);
+    }
+  };
+
   if (loading) return <LoadingSpinner text="Loading pipeline..." />;
 
   const iterations = pipeline?.iterations || [];
+  const visibleIterations = iterations.filter((it) => !removedIterations.includes(it.iteration));
   const sourceDatasetIds = pipeline?.dataset_ids || [];
-  const selected = iterations[activeIter];
+  const safeActiveIter = Math.min(activeIter, Math.max(visibleIterations.length - 1, 0));
+  const selected = visibleIterations[safeActiveIter];
 
-  const thresholdData = iterations.map((it) => ({
+  const thresholdData = visibleIterations.map((it) => ({
     name: `v${it.iteration}`,
     minsup: it.minsup,
     minconf: it.minconf,
@@ -193,13 +256,14 @@ export default function PipelinePage() {
         <div className="card soft-shell p-4">
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs text-[color:var(--color-text-muted)]">
-              Choose datasets to include in this run. Built-ins (A, B) stay locked from deletion but can be skipped per run.
+              Choose datasets to include in this run. Built-ins (A, B) can be skipped per run but cannot be deleted.
             </p>
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
             {availableSources.map((datasetId) => {
               const isBuiltin = datasetId === "A" || datasetId === "B";
               const isChecked = selectedSources.includes(datasetId);
+              const isDeleting = deletingDatasetId === datasetId;
               return (
                 <label
                   key={datasetId}
@@ -215,6 +279,21 @@ export default function PipelinePage() {
                   />
                   <span className="text-xs font-semibold text-[color:var(--color-text)]">{datasetId}</span>
                   {isBuiltin && <span className="text-[10px] text-[color:var(--color-text-muted)]">core</span>}
+                  {!isBuiltin && (
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        handleRemoveDataset(datasetId);
+                      }}
+                      disabled={running || isDeleting}
+                      aria-label={`Delete dataset ${datasetId}`}
+                      className="rounded-full p-1 text-[color:var(--color-text-muted)] hover:bg-[color:var(--color-surface)] hover:text-rose-500 disabled:opacity-50"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  )}
                 </label>
               );
             })}
@@ -260,43 +339,65 @@ export default function PipelinePage() {
       </div>
 
       {/* Iteration Timeline */}
-      {iterations.length > 0 && (
+      {visibleIterations.length > 0 && (
         <>
           <div className="card soft-shell p-6">
-            <h3 className="mb-5 flex items-center gap-2 text-sm font-semibold text-[color:var(--color-text)]">
-              <Activity size={16} className="text-[color:var(--color-text)]" />
-              Iteration Timeline
-            </h3>
+            <div className="mb-5 flex items-center justify-between gap-3">
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-[color:var(--color-text)]">
+                <Activity size={16} className="text-[color:var(--color-text)]" />
+                Iteration Timeline
+              </h3>
+              {removedIterations.length > 0 && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleRestoreIterations}
+                >
+                  Restore Iterations ({removedIterations.length})
+                </Button>
+              )}
+            </div>
             <div className="flex items-center justify-center gap-0">
-              {iterations.map((it, i) => {
-                const isActive = i === activeIter;
+              {visibleIterations.map((it, i) => {
+                const isActive = i === safeActiveIter;
                 return (
                   <div key={it.iteration} className="flex items-center">
-                    <button
-                      onClick={() => setActiveIter(i)}
-                      aria-current={isActive ? "step" : undefined}
-                      aria-label={`View iteration v${it.iteration} (${it.dataset_label})`}
-                      className={`flex flex-col items-center px-6 py-4 rounded-2xl transition-all duration-300 ${
-                        isActive ? "soft-pressed border-2 border-[color:var(--color-border)] bg-[color:var(--color-surface-2)] shadow-sm" : "border-2 border-transparent hover:bg-[color:var(--color-surface-2)]"
-                      }`}
-                    >
-                      <div className={`w-11 h-11 rounded-full flex items-center justify-center text-sm font-bold mb-2 transition-all ${
-                        isActive ? "bg-[color:var(--color-text)] text-white" : "soft-pressed bg-[color:var(--color-surface-2)] text-[color:var(--color-text-muted)]"
-                      }`}>
-                        v{it.iteration}
-                      </div>
-                      <span className="text-xs font-semibold text-[color:var(--color-text)]">{it.dataset_label}</span>
-                      <span className="text-[10px] text-[color:var(--color-text-muted)]">{it.n_transactions.toLocaleString()} txns</span>
-                      <span className="text-[10px] text-[color:var(--color-text-muted)]">{it.n_rules} rules</span>
-                    </button>
-                    {i < iterations.length - 1 && (
+                    <div className="relative">
+                      <button
+                        onClick={() => setActiveIter(i)}
+                        aria-current={isActive ? "step" : undefined}
+                        aria-label={`View iteration v${it.iteration} (${it.dataset_label})`}
+                        className={`flex flex-col items-center px-6 py-4 rounded-2xl transition-all duration-300 ${
+                          isActive ? "soft-pressed border-2 border-[color:var(--color-border)] bg-[color:var(--color-surface-2)] shadow-sm" : "border-2 border-transparent hover:bg-[color:var(--color-surface-2)]"
+                        }`}
+                      >
+                        <div className={`w-11 h-11 rounded-full flex items-center justify-center text-sm font-bold mb-2 transition-all ${
+                          isActive ? "bg-[color:var(--color-text)] text-white" : "soft-pressed bg-[color:var(--color-surface-2)] text-[color:var(--color-text-muted)]"
+                        }`}>
+                          v{it.iteration}
+                        </div>
+                        <span className="text-xs font-semibold text-[color:var(--color-text)]">{it.dataset_label}</span>
+                        <span className="text-[10px] text-[color:var(--color-text-muted)]">{it.n_transactions.toLocaleString()} txns</span>
+                        <span className="text-[10px] text-[color:var(--color-text-muted)]">{it.n_rules} rules</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveIteration(it.iteration)}
+                        aria-label={`Remove iteration v${it.iteration} from current view`}
+                        className="absolute right-1 top-1 rounded-full p-1 text-[color:var(--color-text-muted)] hover:bg-[color:var(--color-surface)] hover:text-rose-500"
+                      >
+                        <XCircle size={14} />
+                      </button>
+                    </div>
+                    {i < visibleIterations.length - 1 && (
                       <div className="flex flex-col items-center mx-2">
                         <ArrowRight size={16} className="text-[color:var(--color-divider)]" aria-hidden="true" />
-                        {iterations[i + 1]?.drift && (
+                        {visibleIterations[i + 1]?.drift && (
                           <span className={`text-[9px] px-2 py-0.5 rounded-full font-semibold mt-1 ${
-                            iterations[i + 1].drift!.drift_detected ? "bg-rose-100 text-rose-600" : "bg-emerald-100 text-emerald-700"
+                            visibleIterations[i + 1].drift!.drift_detected ? "bg-rose-100 text-rose-600" : "bg-emerald-100 text-emerald-700"
                           }`}>
-                            J={iterations[i + 1].drift!.jaccard.toFixed(2)}
+                            J={visibleIterations[i + 1].drift!.jaccard.toFixed(2)}
                           </span>
                         )}
                       </div>
@@ -500,11 +601,11 @@ export default function PipelinePage() {
         </div>
       )}
 
-      {!iterations.length && (
+      {!visibleIterations.length && (
         <EmptyState
           icon={<Workflow size={48} />}
           title="No Pipeline Results"
-          description='Click "Run Pipeline" to start the chronological self-learning loop with automatic dataset inclusion and drift detection.'
+          description='Click "Run Pipeline" to start the chronological self-learning loop with dataset selection and drift detection.'
           action={
             <Button
               onClick={handleRun}
