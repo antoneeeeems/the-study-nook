@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from backend.main import app
+from backend.routers import pipeline as pipeline_router
 
 
 client = TestClient(app)
@@ -28,6 +29,28 @@ def test_pipeline_history_endpoint_returns_runs():
     body = response.json()
     assert "runs" in body
     assert isinstance(body["runs"], list)
+
+
+def test_pipeline_run_invalidates_transaction_and_rule_caches(monkeypatch):
+    calls = {"dataset": 0, "rules": 0}
+
+    def _track_dataset_cache_clear(dataset_id=None):
+        calls["dataset"] += 1
+
+    def _track_rules_cache_clear(dataset_id=None):
+        calls["rules"] += 1
+
+    monkeypatch.setattr(pipeline_router, "clear_cache", _track_dataset_cache_clear)
+    monkeypatch.setattr(pipeline_router, "clear_rules_cache", _track_rules_cache_clear)
+
+    response = client.post(
+        "/api/pipeline/run",
+        json={"seed": 123},
+    )
+
+    assert response.status_code == 200
+    assert calls["dataset"] == 1
+    assert calls["rules"] == 1
 
 
 def test_upload_returns_quality_report_for_small_dataset(tmp_path):

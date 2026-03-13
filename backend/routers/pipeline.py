@@ -3,7 +3,8 @@ from pydantic import BaseModel
 from typing import Annotated
 from fastapi import Query
 
-from ..services.dataset import get_pipeline_dataset_ids_ordered, load_transactions
+from ..services.dataset import get_pipeline_dataset_ids_ordered, load_transactions, clear_cache
+from ..services.recommendation import clear_rules_cache
 from ..core.pipeline import run_full_pipeline, compare_fpgrowth_vs_apriori
 from ..core.threshold import adaptive_threshold
 from ..core.versioning import save_pipeline_run, load_latest_run, list_runs
@@ -29,6 +30,10 @@ class PipelineRunRequest(BaseModel):
     responses={404: {"description": "Dataset not found"}},
 )
 def run_pipeline(body: PipelineRunRequest):
+    # Force-refresh transaction and rules caches so a pipeline run always reflects latest CSV state.
+    clear_cache()
+    clear_rules_cache()
+
     dataset_ids = get_pipeline_dataset_ids_ordered()
     dataset_sequences = []
     for dataset_id in dataset_ids:
