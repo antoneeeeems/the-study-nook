@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import { Outfit, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import Sidebar from "@/components/layout/Sidebar";
@@ -8,6 +8,7 @@ import { DatasetProvider } from "@/context/DatasetContext";
 import { CartProvider } from "@/context/CartContext";
 import { ToastProvider } from "@/context/ToastContext";
 import { ThemeProvider } from "@/context/ThemeContext";
+import { RecommendationSourceProvider } from "@/context/RecommendationSourceContext";
 
 const outfit = Outfit({
   variable: "--font-outfit",
@@ -41,7 +42,8 @@ export default function RootLayout({
       <body className={`${outfit.variable} ${ibmPlexMono.variable} antialiased`}>
         <ThemeProvider>
           <DatasetProvider>
-            <CartProvider>
+            <RecommendationSourceProvider>
+              <CartProvider>
               <ToastProvider>
                 <MiniCartDrawer />
                 <div className="min-h-screen app-bg flex overflow-hidden">
@@ -53,9 +55,11 @@ export default function RootLayout({
                 </div>
               </ToastProvider>
             </CartProvider>
+            </RecommendationSourceProvider>
           </DatasetProvider>
         </ThemeProvider>
       </body>
     </html>
   );
 }
+

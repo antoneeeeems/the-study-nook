@@ -102,7 +102,7 @@ def get_uploaded_dataset_ids_ordered():
     return [dataset_id for _, _, dataset_id in candidates]
 
 
-def get_pipeline_dataset_ids_ordered():
+def get_pipeline_dataset_ids_ordered(include_dataset_ids=None, exclude_dataset_ids=None):
     ordered_ids = []
     seen_ids = set()
 
@@ -125,7 +125,29 @@ def get_pipeline_dataset_ids_ordered():
             ordered_ids.append(ds_id)
             seen_ids.add(ds_id)
 
-    return ordered_ids
+    include_set = None
+    if include_dataset_ids is not None:
+        include_set = {
+            str(dataset_id).strip()
+            for dataset_id in include_dataset_ids
+            if str(dataset_id).strip()
+        }
+
+    exclude_set = {
+        str(dataset_id).strip()
+        for dataset_id in (exclude_dataset_ids or [])
+        if str(dataset_id).strip()
+    }
+
+    filtered_ids = []
+    for dataset_id in ordered_ids:
+        if include_set is not None and dataset_id not in include_set:
+            continue
+        if dataset_id in exclude_set:
+            continue
+        filtered_ids.append(dataset_id)
+
+    return filtered_ids
 
 
 def get_dataset_path(dataset_id):

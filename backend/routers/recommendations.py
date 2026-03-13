@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Query, HTTPException
 from typing import Annotated
+import pandas as pd
 from ..models.schemas import (
     BusinessInsightsOut,
     BundleOut,
@@ -10,9 +11,11 @@ from ..models.schemas import (
     FBTItem,
     HomepageItem,
     PromoOut,
+    RecommendationSourceQuery,
     RuleOut,
 )
 from ..services.dataset import load_transactions
+from ..core.versioning import load_run
 from ..services.recommendation import (
     get_rules, get_top_bundles, get_top_rules, get_homepage_ranking,
     get_frequently_bought_together, get_cross_sell, get_promos,
@@ -31,13 +34,64 @@ def _load_rules(dataset_id: str):
     return rules
 
 
+def _parse_source_selector(run_id: str | None, iteration: int | None) -> RecommendationSourceQuery | None:
+    if run_id is None and iteration is None:
+        return None
+    if not run_id or iteration is None:
+        raise HTTPException(status_code=422, detail="Both run_id and iteration are required together")
+    try:
+        return RecommendationSourceQuery(run_id=run_id, iteration=iteration)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+def _normalize_rules_frame(rules_records: list[dict]) -> pd.DataFrame:
+    rules = pd.DataFrame(rules_records)
+    if rules.empty:
+        return rules
+
+    for column in ["antecedent", "consequent"]:
+        if column in rules.columns:
+            rules[column] = rules[column].astype(str).str.replace(r"[\{\}]", "", regex=True).str.strip()
+
+    if "score" in rules.columns:
+        rules = rules.sort_values("score", ascending=False, kind="stable").reset_index(drop=True)
+    return rules
+
+
+def _load_rules_from_iteration(selector: RecommendationSourceQuery) -> pd.DataFrame:
+    run = load_run(selector.run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Pipeline run '{selector.run_id}' not found")
+
+    iterations = run.get("iterations", [])
+    selected = next((it for it in iterations if int(it.get("iteration", -1)) == selector.iteration), None)
+    if selected is None:
+        raise HTTPException(status_code=404, detail=f"Iteration v{selector.iteration} not found in run '{selector.run_id}'")
+
+    rules_records = selected.get("rules") or []
+    return _normalize_rules_frame(rules_records)
+
+
+def _load_rules_for_source(dataset_id: str, run_id: str | None, iteration: int | None):
+    selector = _parse_source_selector(run_id, iteration)
+    if selector is None:
+        return _load_rules(dataset_id)
+    return _load_rules_from_iteration(selector)
+
+
 @router.get(
     "/{dataset_id}/top-bundles",
     response_model=list[BundleOut],
     responses={404: {"description": "Dataset not found"}},
 )
-def top_bundles(dataset_id: str, top_n: Annotated[int, Query(ge=1, le=20)] = 5):
-    rules = _load_rules(dataset_id)
+def top_bundles(
+    dataset_id: str,
+    top_n: Annotated[int, Query(ge=1, le=20)] = 5,
+    run_id: str | None = Query(default=None),
+    iteration: int | None = Query(default=None, ge=1),
+):
+    rules = _load_rules_for_source(dataset_id, run_id, iteration)
     return get_top_bundles(rules, top_n)
 
 
@@ -46,8 +100,13 @@ def top_bundles(dataset_id: str, top_n: Annotated[int, Query(ge=1, le=20)] = 5):
     response_model=list[RuleOut],
     responses={404: {"description": "Dataset not found"}},
 )
-def top_rules(dataset_id: str, top_n: Annotated[int, Query(ge=1, le=50)] = 10):
-    rules = _load_rules(dataset_id)
+def top_rules(
+    dataset_id: str,
+    top_n: Annotated[int, Query(ge=1, le=50)] = 10,
+    run_id: str | None = Query(default=None),
+    iteration: int | None = Query(default=None, ge=1),
+):
+    rules = _load_rules_for_source(dataset_id, run_id, iteration)
     return get_top_rules(rules, top_n)
 
 
@@ -56,8 +115,13 @@ def top_rules(dataset_id: str, top_n: Annotated[int, Query(ge=1, le=50)] = 10):
     response_model=list[HomepageItem],
     responses={404: {"description": "Dataset not found"}},
 )
-def homepage_ranking(dataset_id: str, top_n: Annotated[int, Query(ge=1, le=20)] = 10):
-    rules = _load_rules(dataset_id)
+def homepage_ranking(
+    dataset_id: str,
+    top_n: Annotated[int, Query(ge=1, le=20)] = 10,
+    run_id: str | None = Query(default=None),
+    iteration: int | None = Query(default=None, ge=1),
+):
+    rules = _load_rules_for_source(dataset_id, run_id, iteration)
     return get_homepage_ranking(rules, top_n)
 
 
@@ -70,8 +134,10 @@ def frequently_bought_together(
     dataset_id: str,
     item: Annotated[str, Query(...)],
     top_n: Annotated[int, Query(ge=1, le=10)] = 5,
+    run_id: str | None = Query(default=None),
+    iteration: int | None = Query(default=None, ge=1),
 ):
-    rules = _load_rules(dataset_id)
+    rules = _load_rules_for_source(dataset_id, run_id, iteration)
     return get_frequently_bought_together(item, rules, top_n)
 
 
@@ -80,8 +146,13 @@ def frequently_bought_together(
     response_model=list[CrossSellItem],
     responses={404: {"description": "Dataset not found"}},
 )
-def cross_sell(dataset_id: str, body: CrossSellRequest):
-    rules = _load_rules(dataset_id)
+def cross_sell(
+    dataset_id: str,
+    body: CrossSellRequest,
+    run_id: str | None = Query(default=None),
+    iteration: int | None = Query(default=None, ge=1),
+):
+    rules = _load_rules_for_source(dataset_id, run_id, iteration)
     return get_cross_sell(body.cart_items, rules, body.top_n)
 
 
@@ -90,8 +161,13 @@ def cross_sell(dataset_id: str, body: CrossSellRequest):
     response_model=list[PromoOut],
     responses={404: {"description": "Dataset not found"}},
 )
-def promos(dataset_id: str, top_n: Annotated[int, Query(ge=1, le=20)] = 5):
-    rules = _load_rules(dataset_id)
+def promos(
+    dataset_id: str,
+    top_n: Annotated[int, Query(ge=1, le=20)] = 5,
+    run_id: str | None = Query(default=None),
+    iteration: int | None = Query(default=None, ge=1),
+):
+    rules = _load_rules_for_source(dataset_id, run_id, iteration)
     return get_promos(rules, top_n)
 
 
@@ -100,8 +176,13 @@ def promos(dataset_id: str, top_n: Annotated[int, Query(ge=1, le=20)] = 5):
     response_model=CartPromoResponse,
     responses={404: {"description": "Dataset not found"}},
 )
-def cart_promos(dataset_id: str, body: CartPromoRequest):
-    rules = _load_rules(dataset_id)
+def cart_promos(
+    dataset_id: str,
+    body: CartPromoRequest,
+    run_id: str | None = Query(default=None),
+    iteration: int | None = Query(default=None, ge=1),
+):
+    rules = _load_rules_for_source(dataset_id, run_id, iteration)
     payload_items = [{'name': i.name, 'qty': i.qty} for i in body.cart_items]
     return get_cart_promos(payload_items, rules)
 

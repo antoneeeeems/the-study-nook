@@ -46,3 +46,16 @@ def test_pipeline_changes_with_different_seed():
     assert 0.01 <= iter_1_b["minsup"] <= 1.0
     assert 0.1 <= iter_1_a["minconf"] <= 1.0
     assert 0.1 <= iter_1_b["minconf"] <= 1.0
+
+
+def test_pipeline_source_order_respects_include_override():
+    dataset_ids = get_pipeline_dataset_ids_ordered(include_dataset_ids=["B", "A"])
+    assert dataset_ids
+    assert dataset_ids[0] == "A"
+    if "B" in dataset_ids:
+        assert dataset_ids.index("A") < dataset_ids.index("B")
+
+
+def test_pipeline_source_order_respects_exclude_override():
+    dataset_ids = get_pipeline_dataset_ids_ordered(exclude_dataset_ids=["A"])
+    assert "A" not in dataset_ids

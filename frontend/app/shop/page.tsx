@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useDataset } from "@/context/DatasetContext";
 import { useCart } from "@/context/CartContext";
+import { useRecommendationSource } from "@/context/RecommendationSourceContext";
 import { useToast } from "@/context/ToastContext";
 import { api } from "@/lib/api";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
@@ -48,6 +49,7 @@ const QUICK_FILTER_OPTIONS: ReadonlyArray<{ value: QuickFilter; label: string; t
 
 export default function ShopPage() {
   const { activeDataset } = useDataset();
+  const { sourceSelector, sourceLabel } = useRecommendationSource();
   const { items: cartItems, addItem, incrementItem, decrementItem } = useCart();
   const { addToast } = useToast();
   const [products, setProducts] = useState<HomepageItem[]>([]);
@@ -61,17 +63,17 @@ export default function ShopPage() {
 
   useEffect(() => {
     api.recommendations
-      .homepageRanking(activeDataset, 20)
+      .homepageRanking(activeDataset, 20, sourceSelector)
       .then(setProducts)
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [activeDataset]);
+  }, [activeDataset, sourceSelector]);
 
   useEffect(() => {
     if (selectedProduct) {
-      api.recommendations.fbt(activeDataset, selectedProduct).then(setFbtItems).catch(console.error);
+      api.recommendations.fbt(activeDataset, selectedProduct, 5, sourceSelector).then(setFbtItems).catch(console.error);
     }
-  }, [selectedProduct, activeDataset]);
+  }, [selectedProduct, activeDataset, sourceSelector]);
 
   const productControls = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -118,6 +120,7 @@ export default function ShopPage() {
             <Brain size={14} className="text-[color:var(--color-text-muted)]" />
             {productControls.filtered.length} of {productControls.total} products shown, based on what customers frequently buy together
           </p>
+          <p className="mt-1 text-xs text-[color:var(--color-text-muted)]">Recommendation source: {sourceLabel}</p>
         </div>
       </div>
 

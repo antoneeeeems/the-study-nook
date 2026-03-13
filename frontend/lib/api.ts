@@ -10,9 +10,11 @@ import type {
   FBTItem,
   HomepageItem,
   PipelineHistoryResponse,
+  PipelineRunOptions,
   PaginatedResponse,
   PipelineResult,
   Promo,
+  RecommendationSourceSelector,
   Rule,
   Transaction,
 } from "@/lib/types";
@@ -36,6 +38,12 @@ async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
     throw new Error(error.detail || "API request failed");
   }
   return res.json();
+}
+
+function withRecommendationSource(path: string, source?: RecommendationSourceSelector): string {
+  if (!source) return path;
+  const joiner = path.includes("?") ? "&" : "?";
+  return `${path}${joiner}run_id=${encodeURIComponent(source.run_id)}&iteration=${source.iteration}`;
 }
 
 // Datasets
@@ -65,23 +73,23 @@ export const api = {
   },
 
   recommendations: {
-    topBundles: (id: string, topN = 5) =>
-      fetchApi<Bundle[]>(`/api/recommendations/${id}/top-bundles?top_n=${topN}`),
-    topRules: (id: string, topN = 10) =>
-      fetchApi<Rule[]>(`/api/recommendations/${id}/top-rules?top_n=${topN}`),
-    homepageRanking: (id: string, topN = 10) =>
-      fetchApi<HomepageItem[]>(`/api/recommendations/${id}/homepage-ranking?top_n=${topN}`),
-    fbt: (id: string, item: string, topN = 5) =>
-      fetchApi<FBTItem[]>(`/api/recommendations/${id}/frequently-bought-together?item=${encodeURIComponent(item)}&top_n=${topN}`),
-    crossSell: (id: string, cartItems: string[], topN = 5) =>
-      fetchApi<CrossSellItem[]>(`/api/recommendations/${id}/cross-sell`, {
+    topBundles: (id: string, topN = 5, source?: RecommendationSourceSelector) =>
+      fetchApi<Bundle[]>(withRecommendationSource(`/api/recommendations/${id}/top-bundles?top_n=${topN}`, source)),
+    topRules: (id: string, topN = 10, source?: RecommendationSourceSelector) =>
+      fetchApi<Rule[]>(withRecommendationSource(`/api/recommendations/${id}/top-rules?top_n=${topN}`, source)),
+    homepageRanking: (id: string, topN = 10, source?: RecommendationSourceSelector) =>
+      fetchApi<HomepageItem[]>(withRecommendationSource(`/api/recommendations/${id}/homepage-ranking?top_n=${topN}`, source)),
+    fbt: (id: string, item: string, topN = 5, source?: RecommendationSourceSelector) =>
+      fetchApi<FBTItem[]>(withRecommendationSource(`/api/recommendations/${id}/frequently-bought-together?item=${encodeURIComponent(item)}&top_n=${topN}`, source)),
+    crossSell: (id: string, cartItems: string[], topN = 5, source?: RecommendationSourceSelector) =>
+      fetchApi<CrossSellItem[]>(withRecommendationSource(`/api/recommendations/${id}/cross-sell`, source), {
         method: "POST",
         body: JSON.stringify({ cart_items: cartItems, top_n: topN }),
       }),
-    promos: (id: string, topN = 5) =>
-      fetchApi<Promo[]>(`/api/recommendations/${id}/promos?top_n=${topN}`),
-    cartPromos: (id: string, cartItems: Array<{ name: string; qty: number }>) =>
-      fetchApi<CartPromoCalculation>(`/api/recommendations/${id}/cart-promos`, {
+    promos: (id: string, topN = 5, source?: RecommendationSourceSelector) =>
+      fetchApi<Promo[]>(withRecommendationSource(`/api/recommendations/${id}/promos?top_n=${topN}`, source)),
+    cartPromos: (id: string, cartItems: Array<{ name: string; qty: number }>, source?: RecommendationSourceSelector) =>
+      fetchApi<CartPromoCalculation>(withRecommendationSource(`/api/recommendations/${id}/cart-promos`, source), {
         method: "POST",
         body: JSON.stringify({ cart_items: cartItems }),
       }),
@@ -90,10 +98,14 @@ export const api = {
   },
 
   pipeline: {
-    run: (seed = 42) =>
+    run: (options: PipelineRunOptions = {}) =>
       fetchApi<PipelineResult>("/api/pipeline/run", {
         method: "POST",
-        body: JSON.stringify({ seed }),
+        body: JSON.stringify({
+          seed: options.seed ?? 42,
+          include_dataset_ids: options.include_dataset_ids,
+          exclude_dataset_ids: options.exclude_dataset_ids,
+        }),
       }),
     iterations: () => fetchApi<PipelineResult>("/api/pipeline/iterations"),
     history: (limit = 20) => fetchApi<PipelineHistoryResponse>(`/api/pipeline/history?limit=${limit}`),

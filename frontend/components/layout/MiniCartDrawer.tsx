@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useDataset } from "@/context/DatasetContext";
 import { useCart } from "@/context/CartContext";
+import { useRecommendationSource } from "@/context/RecommendationSourceContext";
 import { useToast } from "@/context/ToastContext";
 import { api } from "@/lib/api";
 import type { CrossSellItem } from "@/lib/types";
@@ -12,6 +13,7 @@ import { Brain, Minus, Plus, ShoppingCart, Sparkles, Trash2, X } from "lucide-re
 
 export default function MiniCartDrawer() {
   const { activeDataset } = useDataset();
+  const { sourceSelector } = useRecommendationSource();
   const { addToast } = useToast();
   const {
     items,
@@ -45,10 +47,10 @@ export default function MiniCartDrawer() {
     if (!isMiniCartOpen || items.length === 0) return;
 
     api.recommendations
-      .crossSell(activeDataset, [...new Set(items.map((item) => item.name))], 3)
+      .crossSell(activeDataset, [...new Set(items.map((item) => item.name))], 3, sourceSelector)
       .then(setCrossSell)
       .catch(() => setCrossSell([]));
-  }, [activeDataset, isMiniCartOpen, items]);
+  }, [activeDataset, isMiniCartOpen, items, sourceSelector]);
 
   if (!isMiniCartOpen) return null;
 

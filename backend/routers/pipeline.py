@@ -1,5 +1,4 @@
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
 from typing import Annotated
 from fastapi import Query
 
@@ -10,6 +9,7 @@ from ..core.threshold import adaptive_threshold
 from ..core.versioning import save_pipeline_run, load_latest_run, list_runs
 from ..models.schemas import (
     AlgorithmComparisonResponse,
+    PipelineRunRequest,
     PipelineRunHistoryResponse,
     PipelineRunResponse,
 )
@@ -18,10 +18,6 @@ router = APIRouter(prefix="/api/pipeline", tags=["pipeline"])
 
 # Cache pipeline results
 _pipeline_cache = {}
-
-
-class PipelineRunRequest(BaseModel):
-    seed: int = 42
 
 
 @router.post(
@@ -34,7 +30,10 @@ def run_pipeline(body: PipelineRunRequest):
     clear_cache()
     clear_rules_cache()
 
-    dataset_ids = get_pipeline_dataset_ids_ordered()
+    dataset_ids = get_pipeline_dataset_ids_ordered(
+        include_dataset_ids=body.include_dataset_ids,
+        exclude_dataset_ids=body.exclude_dataset_ids,
+    )
     dataset_sequences = []
     for dataset_id in dataset_ids:
         transactions = load_transactions(dataset_id)

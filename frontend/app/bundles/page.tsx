@@ -1,7 +1,8 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { useDataset } from "@/context/DatasetContext";
+import { useRecommendationSource } from "@/context/RecommendationSourceContext";
 import { api } from "@/lib/api";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import MetricBadge from "@/components/shared/MetricBadge";
@@ -10,16 +11,17 @@ import type { Bundle } from "@/lib/types";
 
 export default function BundlesPage() {
   const { activeDataset } = useDataset();
+  const { sourceSelector, sourceLabel } = useRecommendationSource();
   const [bundles, setBundles] = useState<Bundle[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     api.recommendations
-      .topBundles(activeDataset, 10)
+      .topBundles(activeDataset, 10, sourceSelector)
       .then(setBundles)
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [activeDataset]);
+  }, [activeDataset, sourceSelector]);
 
   if (loading) return <LoadingSpinner text="Finding bundles..." />;
 
@@ -27,7 +29,7 @@ export default function BundlesPage() {
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-bold text-[color:var(--color-text)]">Recommended Product Bundles</h2>
-        <p className="text-sm text-[color:var(--color-text-muted)]">High-performing item pairs from Dataset {activeDataset} for upsell, cross-sell, and shelf placement planning</p>
+        <p className="text-sm text-[color:var(--color-text-muted)]">High-performing item pairs from {sourceLabel} for upsell, cross-sell, and shelf placement planning</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -71,3 +73,4 @@ export default function BundlesPage() {
     </div>
   );
 }
+

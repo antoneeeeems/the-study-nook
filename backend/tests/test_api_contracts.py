@@ -23,6 +23,40 @@ def test_pipeline_run_returns_metadata_fields():
     assert isinstance(data.get("iterations", []), list)
 
 
+def test_pipeline_run_accepts_include_overrides():
+    response = client.post(
+        "/api/pipeline/run",
+        json={"seed": 77, "include_dataset_ids": ["A"]},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["seed"] == 77
+    assert data.get("dataset_ids") == ["A"]
+
+
+def test_recommendations_can_use_iteration_selector():
+    run_response = client.post(
+        "/api/pipeline/run",
+        json={"seed": 88},
+    )
+    assert run_response.status_code == 200
+    run_payload = run_response.json()
+
+    first_iteration = run_payload.get("iterations", [])[0]
+    assert first_iteration is not None
+
+    rules_response = client.get(
+        f"/api/recommendations/A/top-rules?top_n=5&run_id={run_payload['run_id']}&iteration={first_iteration['iteration']}"
+    )
+    assert rules_response.status_code == 200
+    assert isinstance(rules_response.json(), list)
+
+
+def test_recommendations_reject_partial_iteration_selector():
+    response = client.get("/api/recommendations/A/top-rules?run_id=test-run")
+    assert response.status_code == 422
+
+
 def test_pipeline_history_endpoint_returns_runs():
     response = client.get("/api/pipeline/history?limit=5")
     assert response.status_code == 200

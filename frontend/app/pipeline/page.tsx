@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { api } from "@/lib/api";
 import { useToast } from "@/context/ToastContext";
+import { useRecommendationSource } from "@/context/RecommendationSourceContext";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import EmptyState from "@/components/shared/EmptyState";
 import Button from "@/components/shared/Button";
@@ -11,9 +12,9 @@ import { CHART_GRID, CHART_TICK, CHART_TOOLTIP, CHART_LEGEND, CHART_COLORS } fro
 import {
   FileText, RefreshCw, BarChart3, TreePine, GitBranch, Zap, Search,
   Database, Target, Play, ArrowRight, CheckCircle2, XCircle,
-  TrendingUp, TrendingDown, Activity, Workflow, Shield, AlertTriangle, Trash2,
+  TrendingUp, TrendingDown, Activity, Workflow, Shield, AlertTriangle,
 } from "lucide-react";
-import type { PipelineResult, AlgoComparison } from "@/lib/types";
+import type { PipelineResult, AlgoComparison, DatasetInfo } from "@/lib/types";
 
 type ThresholdDatum = {
   name: string;
@@ -93,48 +94,61 @@ export default function PipelinePage() {
   const [activeIter, setActiveIter] = useState(0);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
-  const [deletingDatasetId, setDeletingDatasetId] = useState<string | null>(null);
+  const [availableSources, setAvailableSources] = useState<string[]>([]);
+  const [selectedSources, setSelectedSources] = useState<string[]>([]);
   const { addToast } = useToast();
+  const { refreshPipelineSource } = useRecommendationSource();
 
   useEffect(() => {
     Promise.all([
       api.pipeline.iterations().catch(() => null),
       api.pipeline.comparison().catch(() => null),
+      api.datasets.list().catch(() => [] as DatasetInfo[]),
     ])
-      .then(([p, c]) => { setPipeline(p); setComparison(c); })
+      .then(([p, c, datasets]) => {
+        setPipeline(p);
+        setComparison(c);
+
+        const discovered = datasets.map((dataset) => dataset.id);
+        const fromPipeline = p?.dataset_ids ?? [];
+        const union = Array.from(new Set([...discovered, ...fromPipeline]));
+        setAvailableSources(union);
+
+        if (fromPipeline.length > 0) {
+          setSelectedSources(fromPipeline);
+        } else {
+          setSelectedSources(union);
+        }
+      })
       .finally(() => setLoading(false));
   }, []);
+
+  const toggleSource = (datasetId: string) => {
+    setSelectedSources((prev) => {
+      if (prev.includes(datasetId)) {
+        const next = prev.filter((id) => id !== datasetId);
+        if (next.length === 0) {
+          addToast("Select at least one dataset source.", "error");
+          return prev;
+        }
+        return next;
+      }
+      return [...prev, datasetId];
+    });
+  };
 
   const handleRun = async () => {
     setRunning(true);
     try {
-      const result = await api.pipeline.run();
+      const result = await api.pipeline.run({ include_dataset_ids: selectedSources });
       setPipeline(result);
+      setSelectedSources(result.dataset_ids ?? selectedSources);
+      await refreshPipelineSource();
       addToast("Pipeline completed — chronological datasets processed into iterations.", "success");
     } catch {
       addToast("Pipeline failed to run", "error");
     } finally {
       setRunning(false);
-    }
-  };
-
-  const handleRemoveSource = async (datasetId: string) => {
-    if (datasetId === "A" || datasetId === "B") {
-      addToast("Built-in datasets cannot be removed.", "error");
-      return;
-    }
-
-    setDeletingDatasetId(datasetId);
-    try {
-      await api.datasets.remove(datasetId);
-      addToast(`Removed dataset '${datasetId}'. Rebuilding iterations...`, "success");
-      const result = await api.pipeline.run();
-      setPipeline(result);
-      setActiveIter(0);
-    } catch {
-      addToast(`Failed to remove dataset '${datasetId}'.`, "error");
-    } finally {
-      setDeletingDatasetId(null);
     }
   };
 
@@ -175,37 +189,33 @@ export default function PipelinePage() {
         </Button>
       </div>
 
-      {sourceDatasetIds.length > 0 && (
+      {availableSources.length > 0 && (
         <div className="card soft-shell p-4">
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs text-[color:var(--color-text-muted)]">
-              Remove accidental uploaded datasets from iteration sources. Built-ins (A, B) are protected.
+              Choose datasets to include in this run. Built-ins (A, B) stay locked from deletion but can be skipped per run.
             </p>
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
-            {sourceDatasetIds.map((datasetId) => {
+            {availableSources.map((datasetId) => {
               const isBuiltin = datasetId === "A" || datasetId === "B";
-              const isDeleting = deletingDatasetId === datasetId;
+              const isChecked = selectedSources.includes(datasetId);
               return (
-                <div
+                <label
                   key={datasetId}
-                  className="soft-pressed flex items-center gap-2 rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-surface-2)] px-3 py-1.5"
+                  className="soft-pressed flex cursor-pointer items-center gap-2 rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-surface-2)] px-3 py-1.5"
                 >
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={() => toggleSource(datasetId)}
+                    disabled={running}
+                    className="h-3.5 w-3.5"
+                    aria-label={`Include dataset ${datasetId} in next pipeline run`}
+                  />
                   <span className="text-xs font-semibold text-[color:var(--color-text)]">{datasetId}</span>
-                  {isBuiltin ? (
-                    <span className="text-[10px] text-[color:var(--color-text-muted)]">locked</span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveSource(datasetId)}
-                      disabled={isDeleting || running}
-                      className="inline-flex h-5 w-5 items-center justify-center rounded-full text-rose-500 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
-                      aria-label={`Remove dataset ${datasetId} from iteration sources`}
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  )}
-                </div>
+                  {isBuiltin && <span className="text-[10px] text-[color:var(--color-text-muted)]">core</span>}
+                </label>
               );
             })}
           </div>

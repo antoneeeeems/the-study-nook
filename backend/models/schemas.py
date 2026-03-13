@@ -97,6 +97,11 @@ class CrossSellRequest(BaseModel):
     top_n: int = 5
 
 
+class RecommendationSourceQuery(BaseModel):
+    run_id: str
+    iteration: int = Field(ge=1)
+
+
 class CartPromoItemIn(BaseModel):
     name: str
     qty: int = Field(ge=1)
@@ -197,6 +202,12 @@ class PipelineRunResponse(BaseModel):
     seed: int
     iterations: list[IterationOut]
     stability: Optional[StabilityOut] = None
+
+
+class PipelineRunRequest(BaseModel):
+    seed: int = 42
+    include_dataset_ids: Optional[list[str]] = None
+    exclude_dataset_ids: Optional[list[str]] = None
 
 
 class PipelineRunListItem(BaseModel):

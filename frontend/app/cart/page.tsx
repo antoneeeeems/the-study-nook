@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useDataset } from "@/context/DatasetContext";
 import { useCart } from "@/context/CartContext";
+import { useRecommendationSource } from "@/context/RecommendationSourceContext";
 import { useToast } from "@/context/ToastContext";
 import { api } from "@/lib/api";
 import type { CrossSellItem } from "@/lib/types";
@@ -13,6 +14,7 @@ import { ArrowRight, Brain, Check, Minus, Plus, ShoppingCart, Sparkles, Trash2, 
 
 export default function CartPage() {
   const { activeDataset } = useDataset();
+  const { sourceSelector, sourceLabel } = useRecommendationSource();
   const { addToast } = useToast();
   const {
     items,
@@ -35,10 +37,10 @@ export default function CartPage() {
     if (items.length === 0) return;
 
     api.recommendations
-      .crossSell(activeDataset, [...new Set(items.map((item) => item.name))], 4)
+      .crossSell(activeDataset, [...new Set(items.map((item) => item.name))], 4, sourceSelector)
       .then(setCrossSell)
       .catch(() => setCrossSell([]));
-  }, [activeDataset, items]);
+  }, [activeDataset, items, sourceSelector]);
 
   const handleCheckout = () => {
     setIsCheckingOut(true);
@@ -79,6 +81,7 @@ export default function CartPage() {
         <p className="text-sm text-[color:var(--color-text-muted)]">
           Complete your order with confidence using data-backed product suggestions.
         </p>
+        <p className="mt-1 text-xs text-[color:var(--color-text-muted)]">Recommendation source: {sourceLabel}</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

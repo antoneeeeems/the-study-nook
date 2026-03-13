@@ -1,8 +1,9 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { useDataset } from "@/context/DatasetContext";
+import { useRecommendationSource } from "@/context/RecommendationSourceContext";
 import { api } from "@/lib/api";
 import StatCard from "@/components/shared/StatCard";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
@@ -45,6 +46,7 @@ const RechartsPie = dynamic(() => import("recharts").then((m) => {
 
 export default function Dashboard() {
   const { activeDataset } = useDataset();
+  const { sourceSelector, sourceLabel } = useRecommendationSource();
   const [stats, setStats] = useState<DatasetStats | null>(null);
   const [bundles, setBundles] = useState<Bundle[]>([]);
   const [promos, setPromos] = useState<Promo[]>([]);
@@ -53,8 +55,8 @@ export default function Dashboard() {
   useEffect(() => {
     Promise.all([
       api.datasets.stats(activeDataset),
-      api.recommendations.topBundles(activeDataset, 3),
-      api.recommendations.promos(activeDataset, 3),
+      api.recommendations.topBundles(activeDataset, 3, sourceSelector),
+      api.recommendations.promos(activeDataset, 3, sourceSelector),
     ])
       .then(([s, b, p]) => {
         setStats(s);
@@ -63,7 +65,7 @@ export default function Dashboard() {
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [activeDataset]);
+  }, [activeDataset, sourceSelector]);
 
   if (loading) return <LoadingSpinner text="Loading dashboard..." />;
   if (!stats) return <p className="text-[color:var(--color-text-muted)]">No data available.</p>;
@@ -112,6 +114,7 @@ export default function Dashboard() {
             <p className="text-sm text-[color:var(--color-text-muted)]">
               Drive better bundles and cross-sell with {stats.total_transactions.toLocaleString()} transactions, {stats.unique_items} unique items, and avg basket size of {stats.avg_basket_size.toFixed(1)}.
             </p>
+            <p className="mt-1 text-xs text-[color:var(--color-text-muted)]">Recommendation source: {sourceLabel}</p>
           </div>
           <div className="hidden md:flex items-center gap-3">
             <div className="flex h-16 w-16 items-center justify-center rounded-3xl soft-chip">
@@ -168,7 +171,7 @@ export default function Dashboard() {
               <div key={`${b.bundle}-${b.score}`} className="flex items-center justify-between rounded-2xl soft-pressed p-3 animate-fade-in-up" style={{ animationDelay: `${i * 100}ms` }}>
                 <div>
                   <p className="text-sm font-semibold text-[color:var(--color-text)]">{b.bundle}</p>
-                  <p className="text-xs text-[color:var(--color-text-muted)] mt-0.5">Lift: {b.lift.toFixed(2)}x · Score: {b.score.toFixed(2)}</p>
+                  <p className="text-xs text-[color:var(--color-text-muted)] mt-0.5">Lift: {b.lift.toFixed(2)}x Â· Score: {b.score.toFixed(2)}</p>
                 </div>
                 <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${getLiftClass(b.lift)}`}>
                   {getLiftLabel(b.lift)}
@@ -189,9 +192,9 @@ export default function Dashboard() {
                 <div>
                   <p className="text-sm font-semibold text-[color:var(--color-text)]">{p.bundle}</p>
                   <p className="text-xs text-[color:var(--color-text-muted)] mt-0.5">
-                    <span className="line-through">₱{p.regular_price}</span>{" "}
-                    <span className="font-semibold text-[color:var(--color-emerald)]">₱{p.promo_price}</span>{" "}
-                    <span className="text-[color:var(--color-rose)]">Save ₱{p.savings}</span>
+                    <span className="line-through">â‚±{p.regular_price}</span>{" "}
+                    <span className="font-semibold text-[color:var(--color-emerald)]">â‚±{p.promo_price}</span>{" "}
+                    <span className="text-[color:var(--color-rose)]">Save â‚±{p.savings}</span>
                   </p>
                 </div>
                 <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${getPromoClass(p.tag)}`}>
@@ -205,3 +208,4 @@ export default function Dashboard() {
     </div>
   );
 }
+

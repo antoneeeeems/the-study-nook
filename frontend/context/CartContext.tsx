@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from "react";
 import { useDataset } from "@/context/DatasetContext";
+import { useRecommendationSource } from "@/context/RecommendationSourceContext";
 import { api } from "@/lib/api";
 import type { AppliedPromo, CartItem } from "@/lib/types";
 
@@ -47,6 +48,7 @@ const CartContext = createContext<CartContextType>({
 
 export function CartProvider({ children }: Readonly<{ children: ReactNode }>) {
   const { activeDataset } = useDataset();
+  const { sourceSelector } = useRecommendationSource();
   const [items, setItems] = useState<CartItem[]>([]);
   const [subtotal, setSubtotal] = useState(0);
   const [totalDiscount, setTotalDiscount] = useState(0);
@@ -100,7 +102,7 @@ export function CartProvider({ children }: Readonly<{ children: ReactNode }>) {
     const cartPayload = items.map((item) => ({ name: item.name, qty: item.qty }));
 
     api.recommendations
-      .cartPromos(activeDataset, cartPayload)
+      .cartPromos(activeDataset, cartPayload, sourceSelector)
       .then((result) => {
         if (cancelled) return;
         setSubtotal(result.subtotal);
@@ -120,7 +122,7 @@ export function CartProvider({ children }: Readonly<{ children: ReactNode }>) {
     return () => {
       cancelled = true;
     };
-  }, [activeDataset, items]);
+  }, [activeDataset, items, sourceSelector]);
 
   const addItem = (item: CartItem) => {
     setItems((prev) => {

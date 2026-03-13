@@ -1,7 +1,8 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { useDataset } from "@/context/DatasetContext";
+import { useRecommendationSource } from "@/context/RecommendationSourceContext";
 import { useToast } from "@/context/ToastContext";
 import { api } from "@/lib/api";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
@@ -31,17 +32,18 @@ function getPromoIcon(tag: Promo["tag"]) {
 
 export default function PromosPage() {
   const { activeDataset } = useDataset();
+  const { sourceSelector, sourceLabel } = useRecommendationSource();
   const { addToast } = useToast();
   const [promos, setPromos] = useState<Promo[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     api.recommendations
-      .promos(activeDataset, 10)
+      .promos(activeDataset, 10, sourceSelector)
       .then(setPromos)
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [activeDataset]);
+  }, [activeDataset, sourceSelector]);
 
   if (loading) return <LoadingSpinner text="Generating promos..." />;
 
@@ -49,7 +51,7 @@ export default function PromosPage() {
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-bold text-[color:var(--color-text)]">Promo Recommendations</h2>
-        <p className="text-sm text-[color:var(--color-text-muted)]">Tiered discount recommendations from Dataset {activeDataset}, prioritized by lift and confidence for manager review</p>
+        <p className="text-sm text-[color:var(--color-text-muted)]">Tiered discount recommendations from {sourceLabel}, prioritized by lift and confidence for manager review</p>
       </div>
 
       {/* Tier Legend */}
@@ -113,7 +115,7 @@ export default function PromosPage() {
                 <div className="space-y-2">
                   <div className="flex justify-between text-sm">
                     <span className="text-[color:var(--color-text-muted)]">Regular Price</span>
-                    <span className="line-through text-[color:var(--color-text-muted)] opacity-70 font-mono">₱{p.regular_price}</span>
+                    <span className="line-through text-[color:var(--color-text-muted)] opacity-70 font-mono">â‚±{p.regular_price}</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-[color:var(--color-text-muted)]">Discount</span>
@@ -121,11 +123,11 @@ export default function PromosPage() {
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-[color:var(--color-text-muted)]">You Save</span>
-                    <span className="font-mono font-semibold text-[color:var(--color-emerald)]">₱{p.savings}</span>
+                    <span className="font-mono font-semibold text-[color:var(--color-emerald)]">â‚±{p.savings}</span>
                   </div>
                   <div className="border-t border-[color:var(--color-border)] pt-2 flex justify-between items-center">
                     <span className="font-semibold text-[color:var(--color-text)]">Promo Price</span>
-                    <span className="font-mono text-xl font-black text-[color:var(--color-text)]">₱{p.promo_price}</span>
+                    <span className="font-mono text-xl font-black text-[color:var(--color-text)]">â‚±{p.promo_price}</span>
                   </div>
                 </div>
 
@@ -149,3 +151,4 @@ export default function PromosPage() {
     </div>
   );
 }
+

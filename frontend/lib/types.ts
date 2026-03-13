@@ -210,6 +210,17 @@ export interface PipelineResult {
   stability: StabilityResult | null;
 }
 
+export interface RecommendationSourceSelector {
+  run_id: string;
+  iteration: number;
+}
+
+export interface PipelineRunOptions {
+  seed?: number;
+  include_dataset_ids?: string[];
+  exclude_dataset_ids?: string[];
+}
+
 export interface PipelineHistoryItem {
   run_id: string;
   created_at: string;

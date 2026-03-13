@@ -1,7 +1,8 @@
-"use client";
+﻿"use client";
 
 import { Fragment, useEffect, useState } from "react";
 import { useDataset } from "@/context/DatasetContext";
+import { useRecommendationSource } from "@/context/RecommendationSourceContext";
 import { api } from "@/lib/api";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import MetricBadge from "@/components/shared/MetricBadge";
@@ -52,7 +53,7 @@ function SortHeader({ col, label, sortBy, sortDir, onSort }: Readonly<SortHeader
         onClick={() => onSort(col)}
         aria-label={`Sort by ${label}`}
       >
-        {label} {sortBy === col && (sortDir === "desc" ? "↓" : "↑")}
+        {label} {sortBy === col && (sortDir === "desc" ? "â†“" : "â†‘")}
       </button>
     </th>
   );
@@ -60,6 +61,7 @@ function SortHeader({ col, label, sortBy, sortDir, onSort }: Readonly<SortHeader
 
 export default function RulesPage() {
   const { activeDataset } = useDataset();
+  const { sourceSelector, sourceLabel } = useRecommendationSource();
   const [rules, setRules] = useState<Rule[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -69,11 +71,11 @@ export default function RulesPage() {
 
   useEffect(() => {
     api.recommendations
-      .topRules(activeDataset, 30)
+      .topRules(activeDataset, 30, sourceSelector)
       .then(setRules)
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [activeDataset]);
+  }, [activeDataset, sourceSelector]);
 
   const filtered = filterStrength === "all" ? rules : rules.filter((r) => r.strength === filterStrength);
   const sorted = [...filtered].sort((a, b) => {
@@ -101,7 +103,7 @@ export default function RulesPage() {
         <div>
           <h2 className="text-xl font-bold text-[color:var(--color-text)]">Association Rules</h2>
           <p className="text-sm text-[color:var(--color-text-muted)]">
-            {sorted.length} rules from Dataset {activeDataset} that explain which items drive add-on purchases
+            {sorted.length} rules from {sourceLabel} that explain which items drive add-on purchases
           </p>
         </div>
       </div>
@@ -198,7 +200,7 @@ export default function RulesPage() {
                     <td className="px-3 py-2.5 font-mono text-xs text-[color:var(--color-text)]">{(r.confidence * 100).toFixed(1)}%</td>
                     <td className="px-3 py-2.5"><MetricBadge label="" value={r.lift} type="lift" /></td>
                     <td className="px-3 py-2.5 font-mono text-xs text-[color:var(--color-text)]">{r.leverage.toFixed(4)}</td>
-                    <td className="px-3 py-2.5 font-mono text-xs text-[color:var(--color-text)]">{r.conviction >= 999 ? "∞" : r.conviction.toFixed(2)}</td>
+                    <td className="px-3 py-2.5 font-mono text-xs text-[color:var(--color-text)]">{r.conviction >= 999 ? "âˆž" : r.conviction.toFixed(2)}</td>
                     <td className="px-3 py-2.5"><MetricBadge label="" value={r.score} type="score" /></td>
                     <td className="px-3 py-2.5">
                       <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${getStrengthClass(r.strength)}`}>
@@ -250,3 +252,4 @@ export default function RulesPage() {
     </div>
   );
 }
+
