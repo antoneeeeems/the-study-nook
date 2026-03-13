@@ -33,3 +33,5 @@ frontend/frontend/
 
 # Notebooks
 .ipynb_checkpoints/
+.claude
+.github

@@ -58,6 +58,96 @@ def normalize_item_name(item: str) -> str:
     return raw.title()
 
 
+def _dedupe_preserve_order(items):
+    return list(dict.fromkeys(items))
+
+
+def _compute_transaction_stats(df):
+    tx_group = df.groupby('TransactionID')['Item'].apply(list)
+    basket_sizes = tx_group.apply(len)
+    total_transactions = int(tx_group.shape[0])
+    unique_items = int(df['Item'].nunique())
+    min_basket = int(basket_sizes.min()) if total_transactions > 0 else 0
+    max_basket = int(basket_sizes.max()) if total_transactions > 0 else 0
+    avg_basket = float(round(float(basket_sizes.mean()), 2)) if total_transactions > 0 else 0.0
+    return {
+        'total_transactions': total_transactions,
+        'unique_items': unique_items,
+        'min_basket_size': min_basket,
+        'max_basket_size': max_basket,
+        'avg_basket_size': avg_basket,
+        'basket_variability': int(basket_sizes.nunique()),
+    }
+
+
+def _build_upload_warnings(stats, duplicate_rows, normalized_duplicate_rows):
+    warnings = []
+    if duplicate_rows > 0:
+        warnings.append(f'{duplicate_rows} duplicate TransactionID+Item rows were removed.')
+    if normalized_duplicate_rows > 0:
+        warnings.append(
+            f'{normalized_duplicate_rows} duplicate TransactionID+Item rows were removed after item normalization.'
+        )
+    if stats['total_transactions'] < 1000:
+        warnings.append('Dataset has fewer than 1000 transactions; this may not satisfy assignment minimums.')
+    if stats['unique_items'] < 15:
+        warnings.append('Dataset has fewer than 15 unique items; this may not satisfy assignment minimums.')
+    if stats['basket_variability'] < 3:
+        warnings.append('Basket sizes show low variability; real-world simulation may be weak.')
+    return warnings
+
+
+def _generate_unique_dataset_id(filename):
+    dataset_id = filename.replace('.csv', '').replace(' ', '_')
+    counter = 1
+    original_id = dataset_id
+    while os.path.exists(os.path.join(UPLOAD_DIR, f'{dataset_id}.csv')):
+        dataset_id = f'{original_id}_{counter}'
+        counter += 1
+    return dataset_id
+
+
+def _prepare_uploaded_dataframe(path):
+    df = pd.read_csv(path)
+    if 'TransactionID' not in df.columns or 'Item' not in df.columns:
+        return None, None, 'CSV must have TransactionID and Item columns'
+
+    working = df[['TransactionID', 'Item']].copy()
+    working['TransactionID'] = working['TransactionID'].astype(str).map(lambda v: _normalize_whitespace(v.strip()))
+    working['Item'] = working['Item'].astype(str).map(lambda v: _normalize_whitespace(v.strip()))
+
+    empty_mask = (working['TransactionID'] == '') | (working['Item'] == '')
+    empty_rows = int(empty_mask.sum())
+    if empty_rows > 0:
+        return None, None, 'CSV contains empty TransactionID or Item values'
+
+    duplicate_rows = int(working.duplicated(subset=['TransactionID', 'Item']).sum())
+    if duplicate_rows > 0:
+        working = working.drop_duplicates(subset=['TransactionID', 'Item'])
+
+    normalized = working.copy()
+    normalized['Item'] = normalized['Item'].map(normalize_item_name)
+
+    normalized_duplicate_rows = int(normalized.duplicated(subset=['TransactionID', 'Item']).sum())
+    if normalized_duplicate_rows > 0:
+        normalized = normalized.drop_duplicates(subset=['TransactionID', 'Item'])
+
+    stats = _compute_transaction_stats(normalized)
+    warnings = _build_upload_warnings(stats, duplicate_rows, normalized_duplicate_rows)
+    quality = {
+        'total_rows': int(len(normalized)),
+        'total_transactions': stats['total_transactions'],
+        'unique_items': stats['unique_items'],
+        'duplicate_transaction_item_rows': int(duplicate_rows + normalized_duplicate_rows),
+        'empty_value_rows': empty_rows,
+        'min_basket_size': stats['min_basket_size'],
+        'max_basket_size': stats['max_basket_size'],
+        'avg_basket_size': stats['avg_basket_size'],
+        'warnings': warnings,
+    }
+    return normalized, quality, None
+
+
 def list_datasets():
     result = []
     seen_ids = set()
@@ -177,7 +267,8 @@ def load_transactions(dataset_id):
     df = load_dataframe(dataset_id)
     if df is None:
         return None
-    transactions = df.groupby('TransactionID')['Item'].apply(list).tolist()
+    grouped = df.groupby('TransactionID')['Item'].apply(list)
+    transactions = [_dedupe_preserve_order(items) for items in grouped.tolist()]
     _cache[dataset_id] = transactions
     return transactions
 
@@ -223,6 +314,7 @@ def get_transactions_paginated(dataset_id, page=1, per_page=50, search=None):
         return None, 0
 
     grouped = df.groupby('TransactionID')['Item'].apply(list).reset_index()
+    grouped['Item'] = grouped['Item'].apply(_dedupe_preserve_order)
     grouped['item_count'] = grouped['Item'].apply(len)
     grouped['items_display'] = grouped['Item'].apply(lambda x: ', '.join(sorted(x)))
 
@@ -252,13 +344,7 @@ def get_transactions_paginated(dataset_id, page=1, per_page=50, search=None):
 
 def save_uploaded_csv(file_content, filename):
     """Save uploaded CSV and return dataset_id plus quality report."""
-    dataset_id = filename.replace('.csv', '').replace(' ', '_')
-    # Ensure unique ID
-    counter = 1
-    original_id = dataset_id
-    while os.path.exists(os.path.join(UPLOAD_DIR, f'{dataset_id}.csv')):
-        dataset_id = f'{original_id}_{counter}'
-        counter += 1
+    dataset_id = _generate_unique_dataset_id(filename)
 
     path = os.path.join(UPLOAD_DIR, f'{dataset_id}.csv')
     with open(path, 'wb') as f:
@@ -266,59 +352,12 @@ def save_uploaded_csv(file_content, filename):
 
     # Validate CSV
     try:
-        df = pd.read_csv(path)
-        if 'TransactionID' not in df.columns or 'Item' not in df.columns:
+        normalized, quality, error_message = _prepare_uploaded_dataframe(path)
+        if error_message:
             os.remove(path)
-            return None, 'CSV must have TransactionID and Item columns', None
+            return None, error_message, None
 
-        working = df[['TransactionID', 'Item']].copy()
-        working['TransactionID'] = working['TransactionID'].astype(str).map(lambda v: _normalize_whitespace(v.strip()))
-        working['Item'] = working['Item'].astype(str).map(lambda v: _normalize_whitespace(v.strip()))
-
-        empty_mask = (working['TransactionID'] == '') | (working['Item'] == '')
-        empty_rows = int(empty_mask.sum())
-        if empty_rows > 0:
-            os.remove(path)
-            return None, 'CSV contains empty TransactionID or Item values', None
-
-        duplicate_rows = int(working.duplicated(subset=['TransactionID', 'Item']).sum())
-        if duplicate_rows > 0:
-            working = working.drop_duplicates(subset=['TransactionID', 'Item'])
-
-        tx_group = working.groupby('TransactionID')['Item'].apply(list)
-        basket_sizes = tx_group.apply(len)
-
-        total_transactions = int(tx_group.shape[0])
-        unique_items = int(working['Item'].nunique())
-        min_basket = int(basket_sizes.min()) if total_transactions > 0 else 0
-        max_basket = int(basket_sizes.max()) if total_transactions > 0 else 0
-        avg_basket = float(round(float(basket_sizes.mean()), 2)) if total_transactions > 0 else 0.0
-
-        warnings = []
-        if total_transactions < 1000:
-            warnings.append('Dataset has fewer than 1000 transactions; this may not satisfy assignment minimums.')
-        if unique_items < 15:
-            warnings.append('Dataset has fewer than 15 unique items; this may not satisfy assignment minimums.')
-        if basket_sizes.nunique() < 3:
-            warnings.append('Basket sizes show low variability; real-world simulation may be weak.')
-        if duplicate_rows > 0:
-            warnings.append(f'{duplicate_rows} duplicate TransactionID+Item rows were removed.')
-
-        normalized = working.copy()
-        normalized['Item'] = normalized['Item'].map(normalize_item_name)
         normalized.to_csv(path, index=False)
-
-        quality = {
-            'total_rows': int(len(normalized)),
-            'total_transactions': total_transactions,
-            'unique_items': unique_items,
-            'duplicate_transaction_item_rows': duplicate_rows,
-            'empty_value_rows': empty_rows,
-            'min_basket_size': min_basket,
-            'max_basket_size': max_basket,
-            'avg_basket_size': avg_basket,
-            'warnings': warnings,
-        }
 
         DATASETS[dataset_id] = path
         clear_cache(dataset_id)

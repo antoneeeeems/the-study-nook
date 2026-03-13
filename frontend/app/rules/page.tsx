@@ -200,7 +200,7 @@ export default function RulesPage() {
                     <td className="px-3 py-2.5 font-mono text-xs text-[color:var(--color-text)]">{(r.confidence * 100).toFixed(1)}%</td>
                     <td className="px-3 py-2.5"><MetricBadge label="" value={r.lift} type="lift" /></td>
                     <td className="px-3 py-2.5 font-mono text-xs text-[color:var(--color-text)]">{r.leverage.toFixed(4)}</td>
-                    <td className="px-3 py-2.5 font-mono text-xs text-[color:var(--color-text)]">{r.conviction >= 999 ? "âˆž" : r.conviction.toFixed(2)}</td>
+                    <td className="px-3 py-2.5 font-mono text-xs text-[color:var(--color-text)]">{r.conviction >= 999 ? "Infinity" : r.conviction.toFixed(2)}</td>
                     <td className="px-3 py-2.5"><MetricBadge label="" value={r.score} type="score" /></td>
                     <td className="px-3 py-2.5">
                       <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${getStrengthClass(r.strength)}`}>
