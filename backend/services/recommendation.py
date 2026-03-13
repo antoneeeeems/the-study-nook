@@ -444,7 +444,7 @@ def get_business_insights(rules_a, rules_b):
             'Place hub products at eye level on the shelf.',
             'Use cross-sell engine at checkout to suggest 1-2 items per basket.',
             'Run Hot Deal bundles during back-to-school season.',
-            'Segment promos: simpler bundles for elementary, broader for HS/College.',
+            'Segment promos by dataset behavior patterns, then validate with recent transactions.',
             'Refresh rules monthly as buyer patterns shift across semesters.',
         ],
     }

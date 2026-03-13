@@ -192,7 +192,29 @@ def cart_promos(
     response_model=BusinessInsightsOut,
     responses={404: {"description": "Required datasets not found"}},
 )
-def business_insights():
+def business_insights(
+    run_id: str | None = Query(default=None),
+    iteration_a: int | None = Query(default=None, ge=1),
+    iteration_b: int | None = Query(default=None, ge=1),
+):
+    if run_id is not None or iteration_a is not None or iteration_b is not None:
+        if not run_id or iteration_a is None or iteration_b is None:
+            raise HTTPException(
+                status_code=422,
+                detail="run_id, iteration_a, and iteration_b are required together",
+            )
+        if iteration_a == iteration_b:
+            raise HTTPException(
+                status_code=422,
+                detail="iteration_a and iteration_b must be different",
+            )
+
+        selector_a = RecommendationSourceQuery(run_id=run_id, iteration=iteration_a)
+        selector_b = RecommendationSourceQuery(run_id=run_id, iteration=iteration_b)
+        rules_a = _load_rules_from_iteration(selector_a)
+        rules_b = _load_rules_from_iteration(selector_b)
+        return get_business_insights(rules_a, rules_b)
+
     transactions_a = load_transactions('A')
     transactions_b = load_transactions('B')
     if not transactions_a or not transactions_b:

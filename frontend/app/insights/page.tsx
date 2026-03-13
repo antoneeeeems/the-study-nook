@@ -7,13 +7,67 @@ import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import { CHART_GRID, CHART_TICK, CHART_TOOLTIP, CHART_LEGEND, CHART_COLORS } from "@/lib/chart-config";
 import StatCard from "@/components/shared/StatCard";
 import { ClipboardList, TrendingUp, Crown, CircleDot, Lightbulb, CheckCircle2 } from "lucide-react";
-import type { BusinessInsights } from "@/lib/types";
+import { useRecommendationSource } from "@/context/RecommendationSourceContext";
+import type { BusinessInsights, IterationResult } from "@/lib/types";
 
 type CompareChartDatum = { name: string; a: number; b: number };
+type ComparisonMode = "dataset" | "iteration";
+
+interface ComparisonMeta {
+  mode: ComparisonMode;
+  leftLabel: string;
+  rightLabel: string;
+}
+
+interface IterationPair {
+  left: IterationResult;
+  right: IterationResult;
+}
+
+function resolveIterationPair(iterations: IterationResult[], selectedIteration: number | null): IterationPair | null {
+  if (iterations.length < 2) {
+    return null;
+  }
+
+  const ordered = [...iterations].sort((a, b) => a.iteration - b.iteration);
+  if (selectedIteration === null) {
+    const left = ordered.at(-2);
+    const right = ordered.at(-1);
+    if (!left || !right) {
+      return null;
+    }
+    return {
+      left,
+      right,
+    };
+  }
+
+  const selectedIndex = ordered.findIndex((it) => it.iteration === selectedIteration);
+  const rightIndex = selectedIndex >= 0 ? selectedIndex : ordered.length - 1;
+  const leftIndex = rightIndex > 0 ? rightIndex - 1 : 0;
+  const fallbackRightIndex = rightIndex === leftIndex ? Math.min(rightIndex + 1, ordered.length - 1) : rightIndex;
+
+  if (leftIndex === fallbackRightIndex) {
+    return null;
+  }
+
+  return {
+    left: ordered[leftIndex],
+    right: ordered[fallbackRightIndex],
+  };
+}
 
 const LazyBarChart = dynamic(() => import("recharts").then((m) => {
   const { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } = m;
-  return function CompareChart({ data }: { data: CompareChartDatum[] }) {
+  return function CompareChart({
+    data,
+    leftLabel,
+    rightLabel,
+  }: {
+    data: CompareChartDatum[];
+    leftLabel: string;
+    rightLabel: string;
+  }) {
     return (
       <ResponsiveContainer width="100%" height={220}>
         <BarChart data={data}>
@@ -22,8 +76,8 @@ const LazyBarChart = dynamic(() => import("recharts").then((m) => {
           <YAxis tick={CHART_TICK.yAxis} />
           <Tooltip {...CHART_TOOLTIP} />
           <Legend {...CHART_LEGEND} />
-          <Bar dataKey="a" fill={CHART_COLORS[0]} radius={[6, 6, 0, 0]} name="Dataset A" />
-          <Bar dataKey="b" fill={CHART_COLORS[1]} radius={[6, 6, 0, 0]} name="Dataset B" />
+          <Bar dataKey="a" fill={CHART_COLORS[0]} radius={[6, 6, 0, 0]} name={leftLabel} />
+          <Bar dataKey="b" fill={CHART_COLORS[1]} radius={[6, 6, 0, 0]} name={rightLabel} />
         </BarChart>
       </ResponsiveContainer>
     );
@@ -31,16 +85,69 @@ const LazyBarChart = dynamic(() => import("recharts").then((m) => {
 }), { ssr: false, loading: () => <div className="h-55 animate-shimmer rounded-xl" /> });
 
 export default function InsightsPage() {
+  const { pipelineResult, selectedIteration } = useRecommendationSource();
   const [insights, setInsights] = useState<BusinessInsights | null>(null);
+  const [comparison, setComparison] = useState<ComparisonMeta>({
+    mode: "dataset",
+    leftLabel: "Dataset A",
+    rightLabel: "Dataset B",
+  });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.recommendations
-      .insights()
-      .then(setInsights)
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, []);
+    let cancelled = false;
+
+    const loadInsights = async () => {
+      setLoading(true);
+
+      const runId = pipelineResult?.run_id;
+      const iterations = pipelineResult?.iterations ?? [];
+      const pair = resolveIterationPair(iterations, selectedIteration);
+
+      try {
+        if (runId && pair) {
+          const data = await api.recommendations.insights({
+            run_id: runId,
+            iteration_a: pair.left.iteration,
+            iteration_b: pair.right.iteration,
+          });
+          if (!cancelled) {
+            setInsights(data);
+            setComparison({
+              mode: "iteration",
+              leftLabel: `Iteration v${pair.left.iteration}`,
+              rightLabel: `Iteration v${pair.right.iteration}`,
+            });
+          }
+          return;
+        }
+
+        const data = await api.recommendations.insights();
+        if (!cancelled) {
+          setInsights(data);
+          setComparison({
+            mode: "dataset",
+            leftLabel: "Dataset A",
+            rightLabel: "Dataset B",
+          });
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error(error);
+          setInsights(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void loadInsights();
+    return () => {
+      cancelled = true;
+    };
+  }, [pipelineResult, selectedIteration]);
 
   if (loading) return <LoadingSpinner text="Analyzing insights..." />;
   if (!insights) return <p className="text-[color:var(--color-text-muted)]">No insights available.</p>;
@@ -64,10 +171,10 @@ export default function InsightsPage() {
 
   const getOverlapMessage = (value: number) => {
     if (value < 0.3) {
-      return "LOW overlap — maintain separate recommendation engines per segment.";
+      return "LOW overlap — maintain separate recommendation engines per dataset.";
     }
     if (value < 0.6) {
-      return "MODERATE overlap — some patterns transfer but segment-specific rules matter.";
+      return "MODERATE overlap — some patterns transfer but dataset-specific rules still matter.";
     }
     return "HIGH overlap — a unified recommendation model is viable.";
   };
@@ -76,15 +183,15 @@ export default function InsightsPage() {
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-bold text-[color:var(--color-text)]">Business Insights</h2>
-        <p className="text-sm text-[color:var(--color-text-muted)]">Comparison of Dataset A (Elementary) vs Dataset B (HS/College)</p>
+        <p className="text-sm text-[color:var(--color-text-muted)]">Comparison of {comparison.leftLabel} vs {comparison.rightLabel}</p>
       </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Rules (A)" value={insights.rule_volume.dataset_a} icon={<ClipboardList size={20} />} color="indigo" subtitle={insights.rule_volume.richer === "A" ? "Richer dataset" : ""} />
-        <StatCard label="Rules (B)" value={insights.rule_volume.dataset_b} icon={<ClipboardList size={20} />} color="amber" subtitle={insights.rule_volume.richer === "B" ? "Richer dataset" : ""} />
-        <StatCard label="Avg Lift (A)" value={insights.avg_lift.dataset_a.toFixed(4)} icon={<TrendingUp size={20} />} color="teal" subtitle={insights.avg_lift.stronger === "A" ? "Stronger associations" : ""} />
-        <StatCard label="Avg Lift (B)" value={insights.avg_lift.dataset_b.toFixed(4)} icon={<TrendingUp size={20} />} color="rose" subtitle={insights.avg_lift.stronger === "B" ? "Stronger associations" : ""} />
+        <StatCard label={`Rules (${comparison.leftLabel})`} value={insights.rule_volume.dataset_a} icon={<ClipboardList size={20} />} color="indigo" subtitle={insights.rule_volume.richer === "A" ? "Richer source" : ""} />
+        <StatCard label={`Rules (${comparison.rightLabel})`} value={insights.rule_volume.dataset_b} icon={<ClipboardList size={20} />} color="amber" subtitle={insights.rule_volume.richer === "B" ? "Richer source" : ""} />
+        <StatCard label={`Avg Lift (${comparison.leftLabel})`} value={insights.avg_lift.dataset_a.toFixed(4)} icon={<TrendingUp size={20} />} color="teal" subtitle={insights.avg_lift.stronger === "A" ? "Stronger associations" : ""} />
+        <StatCard label={`Avg Lift (${comparison.rightLabel})`} value={insights.avg_lift.dataset_b.toFixed(4)} icon={<TrendingUp size={20} />} color="rose" subtitle={insights.avg_lift.stronger === "B" ? "Stronger associations" : ""} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -92,20 +199,20 @@ export default function InsightsPage() {
         <div className="card soft-shell p-5">
           <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-[color:var(--color-text)]">
             <TrendingUp size={16} className="text-[color:var(--color-text)]" />
-            Dataset Comparison
+            Source Comparison
           </h3>
-          <LazyBarChart data={chartData} />
+          <LazyBarChart data={chartData} leftLabel={comparison.leftLabel} rightLabel={comparison.rightLabel} />
         </div>
 
         {/* Strongest Rules */}
         <div className="card soft-shell p-5">
           <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-[color:var(--color-text)]">
             <Crown size={16} className="text-[color:var(--color-text)]" />
-            Strongest Rule Per Dataset
+            Strongest Rule Per Source
           </h3>
           {[
-            { label: "Dataset A", rule: insights.strongest_rule.dataset_a, bg: "bg-[color:var(--color-surface-2)] border-[color:var(--color-border)]" },
-            { label: "Dataset B", rule: insights.strongest_rule.dataset_b, bg: "bg-[color:var(--color-surface-2)] border-[color:var(--color-border)]" },
+            { label: comparison.leftLabel, rule: insights.strongest_rule.dataset_a, bg: "bg-[color:var(--color-surface-2)] border-[color:var(--color-border)]" },
+            { label: comparison.rightLabel, rule: insights.strongest_rule.dataset_b, bg: "bg-[color:var(--color-surface-2)] border-[color:var(--color-border)]" },
           ].map(({ label, rule, bg }) => (
             <div key={label} className={`soft-pressed p-4 rounded-xl border mb-3 ${bg}`}>
               <p className="mb-1 text-xs font-semibold text-[color:var(--color-text-muted)]">{label}</p>
@@ -134,8 +241,8 @@ export default function InsightsPage() {
         </h3>
         <div className="grid grid-cols-2 gap-6">
           {[
-            { label: "Dataset A", hubs: insights.hub_products.dataset_a },
-            { label: "Dataset B", hubs: insights.hub_products.dataset_b },
+            { label: comparison.leftLabel, hubs: insights.hub_products.dataset_a },
+            { label: comparison.rightLabel, hubs: insights.hub_products.dataset_b },
           ].map(({ label, hubs }) => (
             <div key={label}>
               <p className="mb-3 text-xs font-semibold text-[color:var(--color-text-muted)]">{label}</p>
@@ -166,11 +273,11 @@ export default function InsightsPage() {
         </div>
       </div>
 
-      {/* Cross-Dataset Overlap — Venn Diagram */}
+      {/* Cross-Source Overlap */}
       <div className="card soft-shell p-5">
         <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-[color:var(--color-text)]">
           <CircleDot size={16} className="text-[color:var(--color-text)]" />
-          Cross-Dataset Overlap
+          Cross-Source Overlap
         </h3>
         <div className="flex items-center gap-8">
           {/* Venn diagram */}
@@ -178,13 +285,13 @@ export default function InsightsPage() {
             <div className="soft-pressed absolute left-2 top-4 flex h-32 w-32 items-center justify-start rounded-full border-2 border-[color:var(--color-border)] bg-[color:var(--color-surface-2)] pl-5">
               <div className="text-center">
                 <p className="text-lg font-bold text-[color:var(--color-text)]">{insights.cross_dataset_overlap.only_a}</p>
-                <p className="text-[9px] font-medium text-[color:var(--color-text-muted)]">Only A</p>
+                <p className="text-[9px] font-medium text-[color:var(--color-text-muted)]">Only {comparison.leftLabel}</p>
               </div>
             </div>
             <div className="soft-pressed absolute right-2 top-4 flex h-32 w-32 items-center justify-end rounded-full border-2 border-[color:var(--color-border)] bg-[color:var(--color-surface-2)] pr-5">
               <div className="text-center">
                 <p className="text-lg font-bold text-[color:var(--color-text)]">{insights.cross_dataset_overlap.only_b}</p>
-                <p className="text-[9px] font-medium text-[color:var(--color-text-muted)]">Only B</p>
+                <p className="text-[9px] font-medium text-[color:var(--color-text-muted)]">Only {comparison.rightLabel}</p>
               </div>
             </div>
             {/* Overlap center */}
@@ -206,6 +313,9 @@ export default function InsightsPage() {
               />
             </div>
             <p className="text-xs text-[color:var(--color-text-muted)]">{getOverlapMessage(overlap)}</p>
+            {comparison.mode === "dataset" ? (
+              <p className="mt-1 text-[11px] text-[color:var(--color-text-muted)]">Pipeline iteration data not available yet, showing baseline dataset comparison.</p>
+            ) : null}
           </div>
         </div>
       </div>

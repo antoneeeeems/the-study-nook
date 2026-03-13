@@ -57,6 +57,30 @@ def test_recommendations_reject_partial_iteration_selector():
     assert response.status_code == 422
 
 
+def test_business_insights_can_compare_two_iterations():
+    run_response = client.post(
+        "/api/pipeline/run",
+        json={"seed": 66},
+    )
+    assert run_response.status_code == 200
+    run_payload = run_response.json()
+    iterations = run_payload.get("iterations", [])
+    assert len(iterations) >= 2
+
+    response = client.get(
+        f"/api/recommendations/compare/insights?run_id={run_payload['run_id']}&iteration_a={iterations[0]['iteration']}&iteration_b={iterations[1]['iteration']}"
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert "rule_volume" in payload
+    assert "avg_lift" in payload
+
+
+def test_business_insights_rejects_partial_iteration_params():
+    response = client.get("/api/recommendations/compare/insights?run_id=test-run&iteration_a=1")
+    assert response.status_code == 422
+
+
 def test_pipeline_history_endpoint_returns_runs():
     response = client.get("/api/pipeline/history?limit=5")
     assert response.status_code == 200

@@ -93,8 +93,17 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ cart_items: cartItems }),
       }),
-    insights: () =>
-      fetchApi<BusinessInsights>("/api/recommendations/compare/insights"),
+    insights: (params?: { run_id: string; iteration_a: number; iteration_b: number }) => {
+      if (!params) {
+        return fetchApi<BusinessInsights>("/api/recommendations/compare/insights");
+      }
+      const query = new URLSearchParams({
+        run_id: params.run_id,
+        iteration_a: String(params.iteration_a),
+        iteration_b: String(params.iteration_b),
+      });
+      return fetchApi<BusinessInsights>(`/api/recommendations/compare/insights?${query.toString()}`);
+    },
   },
 
   pipeline: {
