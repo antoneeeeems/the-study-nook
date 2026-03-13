@@ -20,7 +20,7 @@ backend/          # FastAPI - wraps existing notebook logic as API
   models/         # Pydantic schemas
 
 frontend/         # Next.js 14 (App Router) + TypeScript + Tailwind CSS v4
-  app/            # Pages: dashboard, transactions, bundles, rules, shop, promos, insights, pipeline, compare
+  app/            # Pages: dashboard, transactions, bundles, rules, shop, promos, insights, pipeline, cart
   components/
     layout/       # Sidebar (Lucide icons, indigo gradient), Header (segmented toggle, breadcrumb, cart badge)
     shared/       # StatCard, MetricBadge, LoadingSpinner, EmptyState
@@ -126,3 +126,5 @@ cd frontend && npm install && npm run dev
 - Updated pipeline API contracts and persistence metadata from pairwise `dataset_id`/`dataset_b_id` to ordered `dataset_ids`, with backward-compatible defaults for older stored runs.
 - Updated frontend pipeline copy and metadata display to explain automatic dataset inclusion and show the resolved dataset source list used per run.
 - Expanded backend test coverage for the new pipeline request contract and deterministic ordered dataset sourcing behavior.
+- Retired the standalone `/compare` route from the frontend shell, added permanent redirect `/compare -> /insights`, and consolidated cross-dataset analysis entry points under Insights + Pipeline.
+- Added deliverable-oriented docs bootstrap under `docs/` with a desktop-only demo storyboard and pipeline diagram, plus a dedicated `npm run snapshots:desktop` capture mode for recording-ready visuals.

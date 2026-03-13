@@ -15,7 +15,6 @@ const PAGE_NAMES: Record<string, string> = {
   "/promos": "Promotions",
   "/pipeline": "Self-Learning Pipeline",
   "/insights": "Business Insights",
-  "/compare": "Dataset Comparison",
 };
 
 export default function Header() {

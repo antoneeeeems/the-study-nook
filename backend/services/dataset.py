@@ -310,3 +310,26 @@ def save_uploaded_csv(file_content, filename):
         if os.path.exists(path):
             os.remove(path)
         return None, str(e), None
+
+
+def delete_uploaded_dataset(dataset_id):
+    """Delete an uploaded dataset file and clear related caches.
+
+    Built-in datasets (A/B) are protected and cannot be removed.
+    """
+    if dataset_id in BUILTIN_DATASET_ORDER:
+        return False, "Built-in datasets cannot be deleted"
+
+    upload_path = os.path.join(UPLOAD_DIR, f'{dataset_id}.csv')
+    if not os.path.exists(upload_path):
+        return False, f"Uploaded dataset '{dataset_id}' not found"
+
+    os.remove(upload_path)
+    DATASETS.pop(dataset_id, None)
+    clear_cache(dataset_id)
+
+    # Import lazily to avoid circular imports during startup.
+    from .recommendation import clear_rules_cache
+
+    clear_rules_cache(dataset_id)
+    return True, None

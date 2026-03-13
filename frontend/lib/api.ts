@@ -42,6 +42,7 @@ async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
 export const api = {
   datasets: {
     list: () => fetchApi<DatasetInfo[]>("/api/datasets"),
+    remove: (id: string) => fetchApi<{ deleted: boolean; dataset_id: string }>(`/api/datasets/${id}`, { method: "DELETE" }),
     stats: (id: string) => fetchApi<DatasetStats>(`/api/datasets/${id}/stats`),
     transactions: (id: string, page = 1, perPage = 50, search?: string) => {
       const params = new URLSearchParams({ page: String(page), per_page: String(perPage) });

@@ -43,8 +43,7 @@ npm run build
 - /shop: product discovery and recommendation interactions.
 - /cart: quantity-based cart management.
 - /promos: generated promo bundles.
-- /insights: cross-dataset business insights.
-- /compare: dataset A vs B analysis.
+- /insights: cross-dataset analysis and business insights.
 - /pipeline: 3-iteration self-learning loop visualization.
 
 ## Pipeline Features in UI

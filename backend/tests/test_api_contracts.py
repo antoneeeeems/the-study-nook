@@ -46,6 +46,26 @@ def test_upload_returns_quality_report_for_small_dataset(tmp_path):
     assert "warnings" in payload["quality"]
 
 
+def test_delete_uploaded_dataset_endpoint_removes_dataset(tmp_path):
+    csv_path = tmp_path / "accidental.csv"
+    csv_path.write_text("TransactionID,Item\nT1,Pencil\nT2,Eraser\n", encoding="utf-8")
+
+    with csv_path.open("rb") as f:
+        upload_response = client.post(
+            "/api/datasets/upload",
+            files={"file": ("accidental.csv", f, "text/csv")},
+        )
+
+    assert upload_response.status_code == 200
+    dataset_id = upload_response.json()["dataset_id"]
+
+    delete_response = client.delete(f"/api/datasets/{dataset_id}")
+    assert delete_response.status_code == 200
+    body = delete_response.json()
+    assert body["deleted"] is True
+    assert body["dataset_id"] == dataset_id
+
+
 def test_cart_promos_endpoint_returns_multi_promo_breakdown():
     response = client.post(
         "/api/recommendations/A/cart-promos",

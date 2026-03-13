@@ -3,6 +3,7 @@ import { mkdir } from "node:fs/promises";
 
 const BASE_URL = process.env.SNAPSHOT_BASE_URL ?? "http://127.0.0.1:3000";
 const OUTPUT_DIR = "playwright-snapshots";
+const VIEWPORT_MODE = (process.env.SNAPSHOT_VIEWPORTS ?? "all").toLowerCase();
 
 const routes = ["/", "/shop", "/cart", "/pipeline", "/insights"];
 const viewports = [
@@ -10,12 +11,17 @@ const viewports = [
   { name: "mobile", width: 390, height: 844 },
 ];
 
+const filteredViewports =
+  VIEWPORT_MODE === "desktop"
+    ? viewports.filter((viewport) => viewport.name === "desktop")
+    : viewports;
+
 async function run() {
   await mkdir(OUTPUT_DIR, { recursive: true });
 
   const browser = await chromium.launch({ headless: true });
   try {
-    for (const viewport of viewports) {
+    for (const viewport of filteredViewports) {
       const context = await browser.newContext({ viewport });
       const page = await context.newPage();
 

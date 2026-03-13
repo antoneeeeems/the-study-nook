@@ -12,7 +12,6 @@ import {
   Tag,
   Workflow,
   Lightbulb,
-  Scale,
 } from "lucide-react";
 
 const NAV_SECTIONS = [
@@ -38,7 +37,6 @@ const NAV_SECTIONS = [
     items: [
       { href: "/pipeline", icon: Workflow, label: "Pipeline" },
       { href: "/insights", icon: Lightbulb, label: "Insights" },
-      { href: "/compare", icon: Scale, label: "Compare" },
     ],
   },
 ];

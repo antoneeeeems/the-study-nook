@@ -3,7 +3,7 @@ from typing import Annotated, Optional
 
 from ..services.dataset import (
     list_datasets, get_dataset_stats, get_transactions_paginated,
-    save_uploaded_csv, load_transactions,
+    save_uploaded_csv, load_transactions, delete_uploaded_dataset,
 )
 from ..models.schemas import (
     DatasetInfoOut,
@@ -71,3 +71,19 @@ async def upload_dataset(file: Annotated[UploadFile, File(...)]):
 
     stats = get_dataset_stats(dataset_id)
     return {"dataset_id": dataset_id, "stats": stats, "quality": quality}
+
+
+@router.delete(
+    "/{dataset_id}",
+    responses={
+        400: {"description": "Cannot delete built-in dataset"},
+        404: {"description": "Dataset not found"},
+    },
+)
+def remove_uploaded_dataset(dataset_id: str):
+    deleted, error = delete_uploaded_dataset(dataset_id)
+    if error:
+        if "cannot be deleted" in error:
+            raise HTTPException(status_code=400, detail=error)
+        raise HTTPException(status_code=404, detail=error)
+    return {"deleted": deleted, "dataset_id": dataset_id}

@@ -56,6 +56,18 @@ Frontend URL:
 
 - http://localhost:3000
 
+Desktop-only storyboard assets:
+
+- docs/VIDEO_STORYBOARD.md
+- docs/PIPELINE_DIAGRAM.md
+
+Desktop-only screenshots for demo recording:
+
+```bash
+cd frontend
+npm run snapshots:desktop
+```
+
 ## Reproducible Pipeline Runs
 
 Pipeline endpoint accepts a seed:

@@ -11,7 +11,7 @@ import { CHART_GRID, CHART_TICK, CHART_TOOLTIP, CHART_LEGEND, CHART_COLORS } fro
 import {
   FileText, RefreshCw, BarChart3, TreePine, GitBranch, Zap, Search,
   Database, Target, Play, ArrowRight, CheckCircle2, XCircle,
-  TrendingUp, TrendingDown, Activity, Workflow, Shield, AlertTriangle,
+  TrendingUp, TrendingDown, Activity, Workflow, Shield, AlertTriangle, Trash2,
 } from "lucide-react";
 import type { PipelineResult, AlgoComparison } from "@/lib/types";
 
@@ -93,6 +93,7 @@ export default function PipelinePage() {
   const [activeIter, setActiveIter] = useState(0);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
+  const [deletingDatasetId, setDeletingDatasetId] = useState<string | null>(null);
   const { addToast } = useToast();
 
   useEffect(() => {
@@ -114,6 +115,26 @@ export default function PipelinePage() {
       addToast("Pipeline failed to run", "error");
     } finally {
       setRunning(false);
+    }
+  };
+
+  const handleRemoveSource = async (datasetId: string) => {
+    if (datasetId === "A" || datasetId === "B") {
+      addToast("Built-in datasets cannot be removed.", "error");
+      return;
+    }
+
+    setDeletingDatasetId(datasetId);
+    try {
+      await api.datasets.remove(datasetId);
+      addToast(`Removed dataset '${datasetId}'. Rebuilding iterations...`, "success");
+      const result = await api.pipeline.run();
+      setPipeline(result);
+      setActiveIter(0);
+    } catch {
+      addToast(`Failed to remove dataset '${datasetId}'.`, "error");
+    } finally {
+      setDeletingDatasetId(null);
     }
   };
 
@@ -153,6 +174,43 @@ export default function PipelinePage() {
           {running ? "Running..." : "Run Pipeline"}
         </Button>
       </div>
+
+      {sourceDatasetIds.length > 0 && (
+        <div className="card soft-shell p-4">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-[color:var(--color-text-muted)]">
+              Remove accidental uploaded datasets from iteration sources. Built-ins (A, B) are protected.
+            </p>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {sourceDatasetIds.map((datasetId) => {
+              const isBuiltin = datasetId === "A" || datasetId === "B";
+              const isDeleting = deletingDatasetId === datasetId;
+              return (
+                <div
+                  key={datasetId}
+                  className="soft-pressed flex items-center gap-2 rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-surface-2)] px-3 py-1.5"
+                >
+                  <span className="text-xs font-semibold text-[color:var(--color-text)]">{datasetId}</span>
+                  {isBuiltin ? (
+                    <span className="text-[10px] text-[color:var(--color-text-muted)]">locked</span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveSource(datasetId)}
+                      disabled={isDeleting || running}
+                      className="inline-flex h-5 w-5 items-center justify-center rounded-full text-rose-500 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      aria-label={`Remove dataset ${datasetId} from iteration sources`}
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Pipeline Architecture Diagram */}
       <div className="card soft-shell p-6">
