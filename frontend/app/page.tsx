@@ -11,6 +11,17 @@ import { CHART_COLORS, CHART_GRID, CHART_TICK, CHART_TOOLTIP } from "@/lib/chart
 import { ClipboardList, Package, ShoppingCart, Database, TrendingUp, Sparkles, Tag } from "lucide-react";
 import type { DatasetStats, Bundle, Promo } from "@/lib/types";
 
+const currencyFormatter = new Intl.NumberFormat("en-PH", {
+  style: "currency",
+  currency: "PHP",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+function formatCurrency(value: number) {
+  return currencyFormatter.format(Number.isFinite(value) ? value : 0);
+}
+
 const RechartsBar = dynamic(() => import("recharts").then((m) => {
   const { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } = m;
   return function FreqChart({ data }: { data: { name: string; freq: number }[] }) {
@@ -171,7 +182,7 @@ export default function Dashboard() {
               <div key={`${b.bundle}-${b.score}`} className="flex items-center justify-between rounded-2xl soft-pressed p-3 animate-fade-in-up" style={{ animationDelay: `${i * 100}ms` }}>
                 <div>
                   <p className="text-sm font-semibold text-[color:var(--color-text)]">{b.bundle}</p>
-                  <p className="text-xs text-[color:var(--color-text-muted)] mt-0.5">Lift: {b.lift.toFixed(2)}x Â· Score: {b.score.toFixed(2)}</p>
+                    <p className="text-xs text-[color:var(--color-text-muted)] mt-0.5">Lift: {b.lift.toFixed(2)}x | Score: {b.score.toFixed(2)}</p>
                 </div>
                 <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${getLiftClass(b.lift)}`}>
                   {getLiftLabel(b.lift)}
@@ -192,9 +203,9 @@ export default function Dashboard() {
                 <div>
                   <p className="text-sm font-semibold text-[color:var(--color-text)]">{p.bundle}</p>
                   <p className="text-xs text-[color:var(--color-text-muted)] mt-0.5">
-                    <span className="line-through">â‚±{p.regular_price}</span>{" "}
-                    <span className="font-semibold text-[color:var(--color-emerald)]">â‚±{p.promo_price}</span>{" "}
-                    <span className="text-[color:var(--color-rose)]">Save â‚±{p.savings}</span>
+                    <span className="line-through">{formatCurrency(p.regular_price)}</span>{" "}
+                    <span className="font-semibold text-[color:var(--color-emerald)]">{formatCurrency(p.promo_price)}</span>{" "}
+                    <span className="text-[color:var(--color-rose)]">Save {formatCurrency(p.savings)}</span>
                   </p>
                 </div>
                 <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${getPromoClass(p.tag)}`}>

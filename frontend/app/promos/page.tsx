@@ -12,6 +12,17 @@ import type { Promo } from "@/lib/types";
 
 const CUTOUT_IDS = ["a", "b", "c", "d", "e", "f"] as const;
 
+const currencyFormatter = new Intl.NumberFormat("en-PH", {
+  style: "currency",
+  currency: "PHP",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+function formatCurrency(value: number) {
+  return currencyFormatter.format(Number.isFinite(value) ? value : 0);
+}
+
 function getPromoDiscount(tag: Promo["tag"]) {
   if (tag === "Hot Deal") return "15%";
   if (tag === "Bundle Saver") return "10%";
@@ -115,7 +126,7 @@ export default function PromosPage() {
                 <div className="space-y-2">
                   <div className="flex justify-between text-sm">
                     <span className="text-[color:var(--color-text-muted)]">Regular Price</span>
-                    <span className="line-through text-[color:var(--color-text-muted)] opacity-70 font-mono">â‚±{p.regular_price}</span>
+                    <span className="line-through text-[color:var(--color-text-muted)] opacity-70 font-mono">{formatCurrency(p.regular_price)}</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-[color:var(--color-text-muted)]">Discount</span>
@@ -123,11 +134,11 @@ export default function PromosPage() {
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-[color:var(--color-text-muted)]">You Save</span>
-                    <span className="font-mono font-semibold text-[color:var(--color-emerald)]">â‚±{p.savings}</span>
+                    <span className="font-mono font-semibold text-[color:var(--color-emerald)]">{formatCurrency(p.savings)}</span>
                   </div>
                   <div className="border-t border-[color:var(--color-border)] pt-2 flex justify-between items-center">
                     <span className="font-semibold text-[color:var(--color-text)]">Promo Price</span>
-                    <span className="font-mono text-xl font-black text-[color:var(--color-text)]">â‚±{p.promo_price}</span>
+                    <span className="font-mono text-xl font-black text-[color:var(--color-text)]">{formatCurrency(p.promo_price)}</span>
                   </div>
                 </div>
 

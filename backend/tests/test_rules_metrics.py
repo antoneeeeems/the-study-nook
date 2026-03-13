@@ -1,7 +1,8 @@
+import pytest
 from backend.core.fpgrowth import run_fpgrowth
 from backend.core.rules import derive_association_rules, score_rules
 from backend.services.dataset import load_transactions
-from backend.services.recommendation import get_cart_promos
+from backend.services.recommendation import get_cart_promos, get_promos
 import pandas as pd
 
 
@@ -87,3 +88,45 @@ def test_cart_promos_prevents_double_discounting_same_item_units():
     result = get_cart_promos(cart_items, rules_df)
     applications = sum(promo["applications"] for promo in result["applied_promos"])
     assert applications == 1
+
+
+def test_promos_and_cart_promos_skip_multi_item_rules_for_pair_focus():
+    rules_df = pd.DataFrame(
+        [
+            {
+                "antecedent": "Compass, Folder, Notebook, Pencil",
+                "consequent": "Highlighter",
+                "support": 0.08,
+                "confidence": 0.5,
+                "lift": 1.6,
+                "score": 0.9,
+            },
+            {
+                "antecedent": "Notebook",
+                "consequent": "Pencil",
+                "support": 0.1,
+                "confidence": 0.6,
+                "lift": 1.4,
+                "score": 0.95,
+            },
+        ]
+    )
+
+    promos = get_promos(rules_df, top_n=5)
+    assert len(promos) == 1
+    assert promos[0]["bundle"] == "Notebook + Pencil"
+    assert promos[0]["regular_price"] == 45
+    assert promos[0]["discount"] == "15%"
+    assert promos[0]["savings"] == pytest.approx(6.75)
+    assert promos[0]["promo_price"] == pytest.approx(38.25)
+    assert promos[0]["mapped_price"] is True
+
+    cart_items = [
+        {"name": "Notebook", "qty": 1},
+        {"name": "Pencil", "qty": 1},
+    ]
+    cart_result = get_cart_promos(cart_items, rules_df)
+    assert len(cart_result["applied_promos"]) == 1
+    assert cart_result["applied_promos"][0]["bundle"] == "Notebook + Pencil"
+    assert cart_result["applied_promos"][0]["regular_price"] == 45
+    assert cart_result["applied_promos"][0]["savings"] == pytest.approx(6.75)

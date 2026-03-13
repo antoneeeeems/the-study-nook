@@ -29,6 +29,28 @@ def get_item_price(item_name: str):
         return PRICE_LIST[item_name], True
     return FALLBACK_PRICE, False
 
+
+def _split_rule_items(item_text: str):
+    return [part.strip() for part in str(item_text).split(',') if part.strip()]
+
+
+def _unique_preserve_order(items):
+    return list(dict.fromkeys(items))
+
+
+def _rule_itemset(antecedent: str, consequent: str):
+    return tuple(_unique_preserve_order(_split_rule_items(antecedent) + _split_rule_items(consequent)))
+
+
+def _sum_item_prices(items):
+    total = 0
+    mapped_all = True
+    for item in items:
+        price, mapped = get_item_price(item)
+        total += price
+        mapped_all = bool(mapped_all and mapped)
+    return total, mapped_all
+
 # Cache mined rules per dataset
 _rules_cache = {}
 
@@ -68,16 +90,18 @@ def get_top_bundles(rules_df, top_n=5):
         return []
     seen, bundles = set(), []
     for _, row in rules_df.iterrows():
-        pair = tuple(sorted([row['antecedent'], row['consequent']]))
-        if pair not in seen:
-            seen.add(pair)
+        itemset = tuple(sorted(_rule_itemset(row['antecedent'], row['consequent'])))
+        if len(itemset) != 2:
+            continue
+        if itemset not in seen:
+            seen.add(itemset)
             bundles.append({
-                'bundle': f"{pair[0]}  +  {pair[1]}",
+                'bundle': f"{row['antecedent']}  +  {row['consequent']}",
                 'support': round(row['support'], 4),
                 'confidence': round(row['confidence'], 4),
                 'lift': round(row['lift'], 4),
                 'score': round(row['score'], 4),
-                'explanation': _bundle_explanation(pair[0], pair[1], row),
+                'explanation': _bundle_explanation(row['antecedent'], row['consequent'], row),
             })
         if len(bundles) == top_n:
             break
@@ -205,13 +229,15 @@ def get_promos(rules_df, top_n=5):
     seen, promos = set(), []
     for _, row in rules_df.iterrows():
         ant, con = row['antecedent'], row['consequent']
-        pair = tuple(sorted([ant, con]))
-        if pair in seen:
+        itemset = tuple(sorted(_rule_itemset(ant, con)))
+        if len(itemset) != 2:
             continue
-        seen.add(pair)
-        ant_price, ant_mapped = get_item_price(ant)
-        con_price, con_mapped = get_item_price(con)
-        total = ant_price + con_price
+        if itemset in seen:
+            continue
+        seen.add(itemset)
+
+        all_items = _rule_itemset(ant, con)
+        total, mapped_all = _sum_item_prices(all_items)
         disc_pct, tag = _assign_discount(row['lift'], row['confidence'])
         savings = round(total * disc_pct / 100, 2)
         promos.append({
@@ -222,7 +248,7 @@ def get_promos(rules_df, top_n=5):
             'savings': savings,
             'promo_price': round(total - savings, 2),
             'lift': round(row['lift'], 4),
-            'mapped_price': bool(ant_mapped and con_mapped),
+            'mapped_price': mapped_all,
         })
         if len(promos) == top_n:
             break
@@ -255,32 +281,33 @@ def get_cart_promos(cart_items, rules_df):
         }
 
     # Generate unique promo candidates from rules.
-    unique_pairs = set()
+    unique_itemsets = set()
     candidates = []
     for _, row in rules_df.iterrows():
         ant, con = row['antecedent'], row['consequent']
-        pair = tuple(sorted([ant, con]))
-        if pair in unique_pairs:
+        itemset = tuple(sorted(_rule_itemset(ant, con)))
+        if len(itemset) != 2:
             continue
-        unique_pairs.add(pair)
+        if itemset in unique_itemsets:
+            continue
+        unique_itemsets.add(itemset)
 
-        ant_price, ant_mapped = get_item_price(pair[0])
-        con_price, con_mapped = get_item_price(pair[1])
-        regular_price = ant_price + con_price
+        bundle_items = _rule_itemset(ant, con)
+        regular_price, mapped_all = _sum_item_prices(bundle_items)
         disc_pct, tag = _assign_discount(row['lift'], row['confidence'])
         savings = round(regular_price * disc_pct / 100, 2)
         promo_price = round(regular_price - savings, 2)
         candidates.append({
             'tag': tag,
-            'bundle': f'{pair[0]} + {pair[1]}',
-            'items': pair,
+            'bundle': f'{ant} + {con}',
+            'items': bundle_items,
             'discount': f'{disc_pct}%',
             'regular_price': regular_price,
             'savings': savings,
             'promo_price': promo_price,
             'lift': round(row['lift'], 4),
             'confidence': float(row['confidence']),
-            'mapped_price': bool(ant_mapped and con_mapped),
+            'mapped_price': mapped_all,
         })
 
     if not candidates:
@@ -297,8 +324,7 @@ def get_cart_promos(cart_items, rules_df):
     while True:
         eligible = []
         for candidate in candidates:
-            item_a, item_b = candidate['items']
-            if remaining.get(item_a, 0) > 0 and remaining.get(item_b, 0) > 0:
+            if all(remaining.get(item, 0) > 0 for item in candidate['items']):
                 eligible.append(candidate)
 
         if not eligible:
@@ -316,9 +342,8 @@ def get_cart_promos(cart_items, rules_df):
             )
         )
         selected = eligible[0]
-        item_a, item_b = selected['items']
-        remaining[item_a] -= 1
-        remaining[item_b] -= 1
+        for item in selected['items']:
+            remaining[item] -= 1
         applied.append(selected)
 
     grouped = {}
